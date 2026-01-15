@@ -246,40 +246,6 @@
 
   let S = load();
 
-  // If page reloads while growing, we stop without awarding (rule: only while visible).
-  const live = $("#liveGain");
-
-if (S.isGrowing) {
-  const tSec = Math.max(0, Math.floor((now() - S.growStartAt)/1000));
-  const eff = efficiencyPct(tSec);
-  const E = eff / 100;
-  const C = currentC();
-  const gain = Math.floor(tSec * C * E);
-
-  // 메인 큰 숫자를 "예상 누적"으로 보여주기
-  $("#points").textContent = fmt(S.points + gain);
-
-  // 보조 줄: 현재 쌓인 예상치 표시
-  live.style.display = "block";
-  live.textContent = `(+${fmt(gain)} 누적 중 · 효율 ${eff}%)`;
-
-  $("#status").innerHTML = `성장중<br>효율 ${eff}%`;
-  $("#btnGrow").textContent = "정산하기";
-  $("#btnUpgrade").disabled = true;
-  $("#btnBattle").disabled = true;
-} else {
-  // 대기 상태에서는 원래 포인트만
-  $("#points").textContent = fmt(S.points);
-
-  live.style.display = "none";
-  live.textContent = "";
-
-  $("#status").textContent = "대기";
-  $("#btnGrow").textContent = "성장중";
-  $("#btnUpgrade").disabled = false;
-  $("#btnBattle").disabled = false;
-}
-
 
   // ---------- Derived ----------
   function enemyPowerForLevel(level){
@@ -809,35 +775,56 @@ function renderCritDmgButtons(){
 
 
   // ---------- Render ----------
-  function render(){
+function pad2(n){ return String(n).padStart(2,"0"); }
+function fmtTime(sec){
+  const m = Math.floor(sec/60);
+  const s = sec%60;
+  return `${pad2(m)}:${pad2(s)}`;
+}
+
+function render(){
+  const live = $("#liveGain");
+
+  $("#topLeft").textContent = `Enemy Lv ${S.enemyLevel}`;
+  $("#topRight").textContent = `C0 ${fmt2(S.c0)} | C ${fmt2(currentC())}`;
+
+  if (S.isGrowing) {
+    const tSec = Math.max(0, Math.floor((now() - S.growStartAt)/1000));
+    const eff = efficiencyPct(tSec);
+    const E = eff / 100;
+    const C = currentC();
+    const gain = Math.floor(tSec * C * E);
+
+    // 큰 숫자: 예상 누적 포인트(현재 + 누적)
+    $("#points").textContent = fmt(S.points + gain);
+
+    // 보조 줄: 타이머 + 예상치
+    live.style.display = "block";
+    live.textContent = `경과 ${fmtTime(tSec)} · +${fmt(gain)} (효율 ${eff}%)`;
+
+    $("#status").textContent = "성장중";
+    $("#btnGrow").textContent = "정산하기";
+    $("#btnUpgrade").disabled = true;
+    $("#btnBattle").disabled = true;
+  } else {
     $("#points").textContent = fmt(S.points);
-    $("#topLeft").textContent = `Enemy Lv ${S.enemyLevel}`;
-    $("#topRight").textContent = `C0 ${fmt2(S.c0)} | C ${fmt2(currentC())}`;
 
-    // Status
-    if (S.isGrowing) {
-      const tSec = Math.max(0, Math.floor((now() - S.growStartAt)/1000));
-      const eff = efficiencyPct(tSec);
-      $("#status").innerHTML = `성장중<br>효율 ${eff}%`;
-      $("#btnGrow").textContent = "정산하기";
-      $("#btnUpgrade").disabled = true;
-      $("#btnBattle").disabled = true;
-    } else {
-      $("#status").textContent = "대기";
-      $("#btnGrow").textContent = "성장중";
-      $("#btnUpgrade").disabled = false;
-      $("#btnBattle").disabled = false;
-    }
+    live.style.display = "none";
+    live.textContent = "";
 
-    // Rebirth info (quiet)
-    const mins = Math.floor(S.focusSecondsSinceRebirth / 60);
-    const rem = Math.max(0, 50 - mins);
-    $("#rebirthInfo").textContent =
-      `환생: 누적 ${mins}분 / 50분 · 이번 생 최고 Lv ${S.maxLevelThisLife} · ΔC0 ${(S.maxLevelThisLife/100).toFixed(2)}`;
-
-    // If upgrade panel open, refresh it
-    if ($("#upgradeOverlay").style.display === "block") renderUpgrade();
+    $("#status").textContent = "대기";
+    $("#btnGrow").textContent = "성장중";
+    $("#btnUpgrade").disabled = false;
+    $("#btnBattle").disabled = false;
   }
+
+  const mins = Math.floor(S.focusSecondsSinceRebirth / 60);
+  $("#rebirthInfo").textContent =
+    `환생: 누적 ${mins}분 / 50분 · 이번 생 최고 Lv ${S.maxLevelThisLife} · ΔC0 ${(S.maxLevelThisLife/100).toFixed(2)}`;
+
+  if ($("#upgradeOverlay").style.display === "block") renderUpgrade();
+}
+
 
   function renderBattle(){
     if (!battle) return;
