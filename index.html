@@ -57,7 +57,7 @@
       border:1px solid rgba(255,255,255,.10); border-radius:12px;
       padding:10px 12px;
     }
-    .crit { color:var(--fg); }
+    .hi { color:var(--fg); }
     .resultCenter { height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:18px; gap:10px; }
     .resultTitle { font-size:28px; font-weight:800; }
     .resultSub { color:var(--muted); font-size:14px; line-height:1.6; }
@@ -86,7 +86,7 @@
     <div class="btnrow">
       <button id="btnUpgrade">업그레이드</button>
       <button id="btnBattle">전투</button>
-      <button id="btnGrow">집중</button>
+      <button id="btnGrow">집중하기</button>
     </div>
   </div>
 </div>
@@ -104,12 +104,12 @@
           <div class="name">포인트</div>
           <div class="val" id="uPoints">0</div>
         </div>
-        <div class="hint" id="uHPHint">MaxHP: -</div>
       </div>
 
       <div class="row">
         <div class="rowHead"><div class="name">ATK</div><div class="val" id="vATK">0</div></div>
         <div class="rowBtns" id="bATK"></div>
+        <div class="hint">물리 배율에 영향</div>
       </div>
 
       <div class="row">
@@ -120,6 +120,7 @@
       <div class="row">
         <div class="rowHead"><div class="name">MATK</div><div class="val" id="vMATK">0</div></div>
         <div class="rowBtns" id="bMATK"></div>
+        <div class="hint">마법 순수 대미지에 영향</div>
       </div>
 
       <div class="row">
@@ -127,16 +128,27 @@
         <div class="rowBtns" id="bMDEF"></div>
       </div>
 
-      <div class="row" id="rowCrit">
-        <div class="rowHead"><div class="name">CRIT%</div><div class="val" id="vCrit">0%</div></div>
-        <div class="rowBtns" id="bCrit"></div>
-        <div class="hint">0% 시작, 상한 90%, 비용 10×2^현재%</div>
+      <div class="row">
+        <div class="rowHead"><div class="name">HP(MAX)</div><div class="val" id="vHP">0</div></div>
+        <div class="hint">HP = (ATK+DEF+MATK+MDEF) × 5</div>
       </div>
 
-      <div class="row" id="rowCritDmg">
+      <div class="row">
+        <div class="rowHead"><div class="name">CRIT%</div><div class="val" id="vCrit">0%</div></div>
+        <div class="rowBtns" id="bCrit"></div>
+        <div class="hint">물리 공격에만 적용 · 0% 시작 · 상한 90% · 비용 10×2^현재%</div>
+      </div>
+
+      <div class="row">
         <div class="rowHead"><div class="name">CRIT+</div><div class="val" id="vCritDmg">+50%</div></div>
         <div class="rowBtns" id="bCritDmg"></div>
-        <div class="hint">추가 피해량 +50% 시작, +5% 단위, 상한 없음, 비용 10×2^업횟수</div>
+        <div class="hint">물리 공격에만 적용 · 추가 피해 +50% 시작, +5% 단위 · 상한 없음 · 비용 10×2^업횟수</div>
+      </div>
+
+      <div class="row">
+        <div class="rowHead"><div class="name">MPEN%</div><div class="val" id="vMPEN">0%</div></div>
+        <div class="rowBtns" id="bMPEN"></div>
+        <div class="hint">마법 공격에만 적용 · 0% 시작 · 상한 90% · 비용 10×2^현재%</div>
       </div>
 
       <div class="row">
@@ -145,9 +157,10 @@
           <button id="btnRebirth" class="mini">환생</button>
         </div>
         <div class="hint">조건: 환생 이후 집중 누적 50분(3000초) 이상</div>
-        <div class="hint">보상: C0 = C0 + (C0×10%)</div>
+        <div class="hint">보상: C0 += (현재 C × 10%)</div>
       </div>
 
+      <!-- SAVE / EXPORT / IMPORT -->
       <div class="row">
         <div class="rowHead"><div class="name">세이브</div><div class="val">복사/붙여넣기</div></div>
         <div class="rowBtns">
@@ -159,7 +172,7 @@
       </div>
 
       <div class="row">
-        <div class="hint">Tip: 아이폰에서 탭이 꺼지거나 다른 앱으로 가면 자동 정산 후 집중 종료됩니다.</div>
+        <div class="hint">Tip: 다른 앱으로 나가거나 탭이 비활성화되면 자동 정산 후 집중 종료됩니다.</div>
       </div>
     </div>
   </div>
@@ -223,28 +236,26 @@
 <script>
 (() => {
   const KEY = "focus_idle_v4";
-  const SAVE_VER = 1;
+  const SAVE_VER = 4;
 
-  // ---------- Utilities ----------
+  // ---------- Utils ----------
   const now = () => Date.now();
+  const $ = (sel) => document.querySelector(sel);
+
   const fmt = (n) => {
     if (typeof n !== "number") return String(n);
     if (n >= 1e9) return (n/1e9).toFixed(2) + "B";
     if (n >= 1e6) return (n/1e6).toFixed(2) + "M";
     if (n >= 1e3) return Math.floor(n).toLocaleString("en-US");
-    return (Math.floor(n)).toString();
+    return String(Math.floor(n));
   };
   const fmt2 = (n) => (Math.round(n * 100) / 100).toFixed(2);
-  function $(sel){ return document.querySelector(sel); }
-  function pad2(n){ return String(n).padStart(2,"0"); }
-  function fmtTime(sec){
-    const m = Math.floor(sec/60);
-    const s = sec%60;
-    return `${pad2(m)}:${pad2(s)}`;
-  }
-  function escapeHtml(s){
-    return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
-  }
+  const pad2 = (n) => String(n).padStart(2,"0");
+  const fmtTime = (sec) => `${pad2(Math.floor(sec/60))}:${pad2(sec%60)}`;
+
+  const escapeHtml = (s) => String(s)
+    .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+
   function toast(msg) {
     const el = $("#toast");
     el.textContent = msg;
@@ -253,7 +264,7 @@
     toast._t = setTimeout(() => el.style.display = "none", 900);
   }
 
-  // ---------- Save Encode/Decode ----------
+  // ---------- Save (copy/paste) ----------
   function encodeSave(obj){
     const payload = { v: SAVE_VER, t: Date.now(), s: obj };
     const json = JSON.stringify(payload);
@@ -264,13 +275,11 @@
     const trimmed = String(str || "").trim();
     const m = trimmed.match(/^FI(\d+):(.+)$/);
     if (!m) throw new Error("형식이 올바르지 않음");
-    const b64 = m[2];
-    const json = decodeURIComponent(escape(atob(b64)));
+    const json = decodeURIComponent(escape(atob(m[2])));
     const payload = JSON.parse(json);
     if (!payload || typeof payload !== "object" || !payload.s) throw new Error("데이터 손상");
     return payload.s;
   }
-
   async function copyToClipboard(text){
     try {
       if (navigator.clipboard && window.isSecureContext) {
@@ -298,14 +307,24 @@
   // ---------- State ----------
   const DEFAULT = {
     points: 0,
-    atk: 5, def: 5, matk: 5, mdef: 5,
-    critChance: 0,
-    critDmgUp: 0,
+
+    atk: 5,
+    def: 5,
+    matk: 5,
+    mdef: 5,
+
+    critChance: 0,    // %
+    critDmgUp: 0,     // bonus = 50 + 5*k
+
+    mpen: 0,          // % (magic penetration)
 
     enemyLevel: 1,
     enemyBasePower: 30,
-    enemyType: "PHY",
-    enemyAtk: 10, enemyDef: 10, enemyMAtk: 5, enemyMDef: 5,
+    enemyType: "PHY", // "PHY" | "MAG"
+    enemyAtk: 10,
+    enemyDef: 10,
+    enemyMAtk: 5,
+    enemyMDef: 5,
 
     isGrowing: false,
     growStartAt: 0,
@@ -319,16 +338,12 @@
   let S = load();
 
   // ---------- Derived ----------
-  const sum4 = (a,b,c,d) => (a+b+c+d);
-
   function playerMaxHP(){
-    // (ATK+DEF+MATK+MDEF) * 5
-    return sum4(S.atk, S.def, S.matk, S.mdef) * 5;
+    return (S.atk + S.def + S.matk + S.mdef) * 5;
   }
 
   function enemyPowerForLevel(level){
-    const k = level - 1;
-    return Math.floor(S.enemyBasePower * Math.pow(1.1, k));
+    return Math.floor(S.enemyBasePower * Math.pow(1.1, level - 1));
   }
 
   function currentC(){
@@ -345,14 +360,6 @@
 
   function critBonusPct(){
     return 50 + 5 * S.critDmgUp;
-  }
-
-  function playerPowerMetric(){
-    return sum4(S.atk,S.def,S.matk,S.mdef);
-  }
-
-  function enemyPowerMetricFromStats(a,b,c,d){
-    return sum4(a,b,c,d);
   }
 
   // ---------- Enemy generation ----------
@@ -375,7 +382,7 @@
   }
   if (!S.enemyAtk || S.enemyMAtk == null || S.enemyMDef == null || !S.enemyType) regenEnemyForLevel();
 
-  // ---------- Focus ----------
+  // ---------- Growth ----------
   function startGrowth(){
     if (S.isGrowing) return;
     S.isGrowing = true;
@@ -383,7 +390,6 @@
     save();
     render();
   }
-
   function settleGrowth(){
     if (!S.isGrowing) return;
     const tSec = Math.max(0, Math.floor((now() - S.growStartAt) / 1000));
@@ -401,7 +407,6 @@
     render();
     if (tSec > 0) toast(`정산 +${fmt(gain)} (${tSec}s, ${Math.round(E*100)}%)`);
   }
-
   document.addEventListener("visibilitychange", () => { if (document.hidden) settleGrowth(); });
   window.addEventListener("pagehide", () => settleGrowth());
 
@@ -411,46 +416,45 @@
   }
   function maxAffordableN(s, factor, points){
     const B = (2*s - 1);
-    const C = -(2 * (points / factor));
-    const disc = B*B - 4*C;
+    const Cq = -(2 * (points / factor));
+    const disc = B*B - 4*Cq;
     if (disc < 0) return 0;
     const n = Math.floor((-B + Math.sqrt(disc)) / 2);
     return Math.max(0, n);
   }
-
   function applyUpgrade(statKey, n){
     if (n <= 0) return false;
-    const isBig = (statKey === "atk" || statKey === "def" || statKey === "matk" || statKey === "mdef");
-    if (!isBig) return false;
-
     const s = S[statKey];
     const cost = seriesCostLinear(s, n, 10);
     if (cost > S.points + 1e-9) return false;
-
     S.points -= cost;
     S[statKey] += n;
     save(); render();
     return true;
   }
 
-  function critChanceCost(c){ return 10 * Math.pow(2, c); }
-  function applyCritChance(delta){
+  // Crit chance: +1% costs 10*2^current%
+  function expPctCost(curPct){ return 10 * Math.pow(2, curPct); }
+
+  function applyPctUpgrade(key, delta, cap=90){
     if (delta <= 0) return false;
-    const target = Math.min(90, S.critChance + delta);
-    const realDelta = target - S.critChance;
+    const cur = S[key];
+    const target = Math.min(cap, cur + delta);
+    const realDelta = target - cur;
     if (realDelta <= 0) return false;
 
     let cost = 0;
     for (let i=0;i<realDelta;i++){
-      cost += critChanceCost(S.critChance + i);
+      cost += expPctCost(cur + i);
       if (cost > S.points + 1e-9) return false;
     }
     S.points -= cost;
-    S.critChance += realDelta;
+    S[key] += realDelta;
     save(); render();
     return true;
   }
 
+  // Crit dmg upgrades: each upgrade adds +5%, cost 10*2^k
   function critDmgCost(k){ return 10 * Math.pow(2, k); }
   function applyCritDmgUp(deltaUpgrades){
     if (deltaUpgrades <= 0) return false;
@@ -467,20 +471,28 @@
 
   // ---------- Battle ----------
   const TURN_LIMIT = 30;
-  const LOG_LIMIT = 60;
-  const TURN_MS = 500;     // 0.5s / turn
-  const BASE_RATE = 0.08;  // current HP 기반 피해량(기본 비율)
+  const LOG_LIMIT = 80;
+
+  // mitigation
+  const KP = 100; // physical
+  const KM = 120; // magic
+
+  // physical HP-based
+  const PHY_R0 = 0.04;    // base HP ratio
+  const PHY_A_SCALE = 200; // ATK scaling
+
+  // magic pure
+  const MAG_MULT = 1.00;
 
   let battle = null;
   let battleTimer = null;
 
-  function enemyMaxHPFromBattle(b){
-    return sum4(b.enemyAtk, b.enemyDef, b.enemyMAtk, b.enemyMDef) * 5;
+  function mitig(def, K){
+    return 1 / (1 + (def / K));
   }
 
-  function pushLog(line, highlight=false){
-    if (!battle) return;
-    battle.log.push({ line, highlight });
+  function pushLog(line, hi=false){
+    battle.log.push({ line, hi });
     if (battle.log.length > LOG_LIMIT) battle.log.shift();
   }
 
@@ -496,58 +508,27 @@
     $("#resultModal").style.display = on ? "block" : "none";
   }
 
-  // 선택(phy/mag)은 "배율"에만 영향: 0.5 + att/(att+def)
-  function dmgByMode(attCurHP, attStat, targetDefStat){
-    const base = Math.max(1, Math.floor(attCurHP * BASE_RATE));
-    const ratio = attStat / Math.max(1, (attStat + targetDefStat));
-    const mult = 0.5 + ratio; // 0.5~1.5
-    return Math.max(1, Math.floor(base * mult));
-  }
-
-  function playerAttackToEnemy(mode){
-    if (mode === "phy") {
-      const base = dmgByMode(battle.meHP, S.atk, battle.enemyDef);
-      const roll = Math.random() * 100;
-      const isCrit = roll < S.critChance;
-      const mult = isCrit ? (1 + (critBonusPct()/100)) : 1;
-      const dmg = Math.max(1, Math.floor(base * mult));
-      return { dmg, isCrit, label: "YOU(PHY)" };
-    } else {
-      const dmg = dmgByMode(battle.meHP, S.matk, battle.enemyMDef);
-      return { dmg, isCrit: false, label: "YOU(MAG)" };
-    }
-  }
-
-  function enemyAttackToPlayer(){
-    if (battle.enemyType === "PHY") {
-      const dmg = dmgByMode(battle.enemyHP, battle.enemyAtk, S.def);
-      return { dmg, label: "ENEMY(PHY)" };
-    } else {
-      const dmg = dmgByMode(battle.enemyHP, battle.enemyMAtk, S.mdef);
-      return { dmg, label: "ENEMY(MAG)" };
-    }
-  }
-
   function openBattle(){
     if (S.isGrowing) return;
 
+    const meMaxHP = playerMaxHP();
+    const enemyMaxHP = (S.enemyAtk + S.enemyDef + S.enemyMAtk + S.enemyMDef) * 5;
+
     battle = {
-      chosenMode: null,
+      chosenMode: null, // "phy" | "mag"
       enemyType: S.enemyType,
-      enemyAtk: S.enemyAtk, enemyDef: S.enemyDef,
-      enemyMAtk: S.enemyMAtk, enemyMDef: S.enemyMDef,
-      enemyMaxHP: 0, enemyHP: 0,
-      meMaxHP: 0, meHP: 0,
+      enemyAtk: S.enemyAtk,
+      enemyDef: S.enemyDef,
+      enemyMAtk: S.enemyMAtk,
+      enemyMDef: S.enemyMDef,
+      enemyMaxHP,
+      enemyHP: enemyMaxHP,
+      meMaxHP,
+      meHP: meMaxHP,
       turn: 0,
       log: [],
       _busy: false
     };
-
-    battle.meMaxHP = playerMaxHP();
-    battle.meHP = battle.meMaxHP;
-
-    battle.enemyMaxHP = enemyMaxHPFromBattle(battle);
-    battle.enemyHP = battle.enemyMaxHP;
 
     $("#modeChooser").style.display = "flex";
     $("#modeFixed").style.display = "none";
@@ -564,25 +545,64 @@
       if ($("#battleOverlay").style.display !== "block") return;
       if (!battle.chosenMode) return;
       doTurn(battle.chosenMode);
-    }, TURN_MS);
+    }, 500); // 0.5s per turn
   }
-
   function stopBattleLoop(){
     if (battleTimer) { clearInterval(battleTimer); battleTimer = null; }
   }
 
+  function playerPhysicalToEnemy(){
+    const ratio = PHY_R0 * (1 + (S.atk / PHY_A_SCALE));
+    const base = Math.floor(battle.meHP * ratio);                 // HP-based
+    const dmg0 = Math.floor(base * mitig(battle.enemyDef, KP));   // reduced by DEF
+    const roll = Math.random() * 100;
+    const isCrit = roll < S.critChance;
+    const mult = isCrit ? (1 + (critBonusPct()/100)) : 1;
+    const dmg = Math.max(1, Math.floor(dmg0 * mult));
+    return { dmg, isCrit };
+  }
+
+  function playerMagicToEnemy(){
+    const pen = S.mpen / 100;
+    const mdefEff = battle.enemyMDef * (1 - pen);
+    const base = Math.floor(S.matk * MAG_MULT);                  // PURE MATK
+    const dmg0 = Math.floor(base * mitig(mdefEff, KM));          // reduced by effective MDEF
+    const dmg = Math.max(1, dmg0);
+    return { dmg, pen };
+  }
+
+  // enemy counter: uses its type
+  function enemyCounterToPlayer(){
+    if (battle.enemyType === "PHY") {
+      const base = Math.floor(battle.enemyHP * PHY_R0 * (1 + (battle.enemyAtk / PHY_A_SCALE)));
+      const dmg0 = Math.floor(base * mitig(S.def, KP));
+      return { dmg: Math.max(1, dmg0), type: "PHY" };
+    } else {
+      // enemy magic is pure by its MATK
+      const base = Math.floor(battle.enemyMAtk * MAG_MULT);
+      const dmg0 = Math.floor(base * mitig(S.mdef, KM));
+      return { dmg: Math.max(1, dmg0), type: "MAG" };
+    }
+  }
+
   async function doTurn(mode){
-    if (!battle) return;
-    if (battle._busy) return;
+    if (!battle || battle._busy) return;
     if (!battle.chosenMode) return;
     battle._busy = true;
 
     try {
       battle.turn += 1;
 
-      const r = playerAttackToEnemy(mode);
-      battle.enemyHP = Math.max(0, battle.enemyHP - r.dmg);
-      pushLog(`${r.isCrit ? "CRIT! " : ""}${r.label}: -${r.dmg}`, r.isCrit);
+      // player
+      if (mode === "phy") {
+        const { dmg, isCrit } = playerPhysicalToEnemy();
+        battle.enemyHP = Math.max(0, battle.enemyHP - dmg);
+        pushLog(`${isCrit ? "CRIT! " : ""}YOU(PHY): -${dmg}`, isCrit);
+      } else {
+        const { dmg, pen } = playerMagicToEnemy();
+        battle.enemyHP = Math.max(0, battle.enemyHP - dmg);
+        pushLog(`YOU(MAG) (PEN ${Math.round(pen*100)}%): -${dmg}`, true);
+      }
 
       if (battle.enemyHP <= 0) {
         const oneTurnKill = (battle.turn === 1);
@@ -590,9 +610,10 @@
         return;
       }
 
-      const e = enemyAttackToPlayer();
-      battle.meHP = Math.max(0, battle.meHP - e.dmg);
-      pushLog(`${e.label}: -${e.dmg}`, false);
+      // enemy
+      const { dmg: edmg, type } = enemyCounterToPlayer();
+      battle.meHP = Math.max(0, battle.meHP - edmg);
+      pushLog(type === "PHY" ? `ENEMY(PHY): -${edmg}` : `ENEMY(MAG): -${edmg}`, false);
 
       if (battle.meHP <= 0) {
         await endBattle(false, false, false);
@@ -609,10 +630,11 @@
     }
   }
 
+  // overkill ratio (simple): player sum stats vs enemy sum stats
   function ratioNowForOverkill(){
-    const Pme = playerPowerMetric();
-    const Penemy = enemyPowerMetricFromStats(battle.enemyAtk, battle.enemyDef, battle.enemyMAtk, battle.enemyMDef);
-    return Pme / Math.max(1, Penemy);
+    const Pme = (S.atk + S.def + S.matk + S.mdef);
+    const Pen = (battle.enemyAtk + battle.enemyDef + battle.enemyMAtk + battle.enemyMDef);
+    return Pme / Math.max(1, Pen);
   }
 
   async function endBattle(win, oneTurnKill, timeout){
@@ -671,16 +693,15 @@
     $("#skipLine").textContent = `+${k} level!!!`;
     await sleep(220);
   }
-
   function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
   // ---------- Rebirth ----------
   function rebirthReady(){ return S.focusSecondsSinceRebirth >= 3000; }
-
   function doRebirth(){
     if (!rebirthReady()) { toast("환생 조건 미달 (집중 누적 50분 필요)"); return; }
 
-    const delta = S.c0 * 0.10;
+    // Δ = 현재 C의 10%
+    const delta = currentC() * 0.10;
     S.c0 += delta;
 
     S.rebirthCount += 1;
@@ -689,7 +710,10 @@
 
     S.points = 0;
     S.atk = 5; S.def = 5; S.matk = 5; S.mdef = 5;
-    S.critChance = 0; S.critDmgUp = 0;
+
+    S.critChance = 0;
+    S.critDmgUp = 0;
+    S.mpen = 0;
 
     S.enemyLevel = 1;
     regenEnemyForLevel();
@@ -699,16 +723,18 @@
     toast(`환생! ΔC0 +${fmt2(delta)} (C0 ${fmt2(S.c0)})`);
   }
 
-  // ---------- Save Import/Export ----------
+  // ---------- Import/Export ----------
   function safeImportFromString(str){
-    if (S.isGrowing) { toast("집중중에는 가져올 수 없습니다. 먼저 정산하세요."); return; }
+    if (S.isGrowing) { toast("집중 중에는 가져올 수 없습니다. 먼저 정산하세요."); return; }
     if ($("#battleOverlay").style.display === "block") { toast("전투 중에는 가져올 수 없습니다."); return; }
 
     let imported;
     try { imported = decodeSave(str); }
-    catch(e) { toast("가져오기 실패: " + (e.message || "형식 오류")); return; }
+    catch(e){ toast("가져오기 실패: " + (e.message || "형식 오류")); return; }
 
     S = Object.assign(structuredClone(DEFAULT), imported);
+
+    // 안전장치
     S.isGrowing = false;
     S.growStartAt = 0;
 
@@ -719,7 +745,7 @@
     toast("가져오기 완료");
   }
 
-  // ---------- UI Wiring ----------
+  // ---------- UI ----------
   $("#btnGrow").addEventListener("click", () => {
     if (S.isGrowing) settleGrowth();
     else startGrowth();
@@ -748,30 +774,28 @@
   });
 
   $("#btnRebirth").addEventListener("click", () => {
-    if (S.isGrowing) { toast("집중중에는 환생할 수 없습니다. 먼저 정산하세요."); return; }
+    if (S.isGrowing) { toast("집중 중에는 환생할 수 없습니다. 먼저 정산하세요."); return; }
     if (!rebirthReady()) { toast(`환생 가능까지 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분`); return; }
-
-    const delta = S.c0 * 0.10;
+    const delta = currentC() * 0.10;
     const ok = confirm(
-      `환생하시겠습니까?\n\n이번 생 최고 레벨: ${S.maxLevelThisLife}\nΔC0 = ${delta.toFixed(2)}\nC0: ${S.c0.toFixed(2)} → ${(S.c0+delta).toFixed(2)}\n\n(레벨/스탯/포인트 리셋)`
+      `환생하시겠습니까?\n\n이번 생 최고 레벨: ${S.maxLevelThisLife}\nΔC0 = (현재 C × 10%) = ${delta.toFixed(2)}\nC0: ${S.c0.toFixed(2)} → ${(S.c0+delta).toFixed(2)}\n\n(레벨/스탯/포인트 리셋)`
     );
     if (ok) doRebirth();
   });
 
+  // save buttons
   $("#btnExport").addEventListener("click", async () => {
-    if (S.isGrowing) { toast("집중중에는 내보내기 불가 (정산 후 가능)"); return; }
+    if (S.isGrowing) { toast("집중 중에는 내보내기 불가 (정산 후 가능)"); return; }
     if ($("#battleOverlay").style.display === "block") { toast("전투 중에는 내보내기 불가"); return; }
     const code = encodeSave(S);
     const ok = await copyToClipboard(code);
     toast(ok ? "복사 완료" : "복사 실패");
   });
-
   $("#btnImport").addEventListener("click", () => {
     const str = prompt("가져오기 코드 붙여넣기");
     if (!str) return;
     safeImportFromString(str);
   });
-
   $("#btnImportClip").addEventListener("click", async () => {
     try {
       const str = await readFromClipboard();
@@ -782,6 +806,7 @@
     }
   });
 
+  // battle start mode choose
   $("#btnStartPhy").addEventListener("click", () => {
     if (!battle) return;
     battle.chosenMode = "phy";
@@ -809,7 +834,7 @@
     doTurn(battle.chosenMode);
   });
 
-  // ---------- Upgrade UI ----------
+  // ---------- Upgrade UI helpers ----------
   function makeBtn(text, onClick, enabled=true){
     const b = document.createElement("button");
     b.className = "mini";
@@ -820,36 +845,43 @@
   }
 
   function renderUpgrade(){
-    $("#uPoints").textContent = fmt(S.points);
-    $("#uHPHint").textContent = `MaxHP: ${fmt(playerMaxHP())}`;
+    // guard: 요소 누락이면 조용히 스킵(버튼 죽는 현상 방지)
+    const required = ["#uPoints","#vATK","#vDEF","#vMATK","#vMDEF","#vHP","#vCrit","#vCritDmg","#vMPEN","#vRebirth",
+                      "#bATK","#bDEF","#bMATK","#bMDEF","#bCrit","#bCritDmg","#bMPEN"];
+    for (const sel of required) {
+      if (!$(sel)) return;
+    }
 
+    $("#uPoints").textContent = fmt(S.points);
     $("#vATK").textContent = S.atk;
     $("#vDEF").textContent = S.def;
     $("#vMATK").textContent = S.matk;
     $("#vMDEF").textContent = S.mdef;
 
+    $("#vHP").textContent = fmt(playerMaxHP());
+
     $("#vCrit").textContent = `${S.critChance}%`;
     $("#vCritDmg").textContent = `+${critBonusPct()}%`;
 
+    $("#vMPEN").textContent = `${S.mpen}%`;
+
     const canReb = rebirthReady();
-    const delta = S.c0 * 0.10;
     $("#vRebirth").textContent = canReb
-      ? `가능 (ΔC0 ${delta.toFixed(2)})`
+      ? `가능 (ΔC0 ${(currentC()*0.10).toFixed(2)})`
       : `불가 (남은 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분)`;
 
     renderStatButtons("atk", "#bATK");
     renderStatButtons("def", "#bDEF");
     renderStatButtons("matk", "#bMATK");
     renderStatButtons("mdef", "#bMDEF");
-    renderCritButtons();
-    renderCritDmgButto
-::contentReference[oaicite:0]{index=0}
-ns();
+
+    renderPctButtons("critChance", "#bCrit", 90);
+    renderCritDmgButtons();
+    renderPctButtons("mpen", "#bMPEN", 90);
   }
 
   function renderStatButtons(key, containerSel){
     const el = $(containerSel);
-    if (!el) return;          // 안전장치
     el.innerHTML = "";
 
     const v = S[key];
@@ -885,27 +917,31 @@ ns();
     }, canMax));
   }
 
-  function renderCritButtons(){
-    const el = $("#bCrit");
+  function renderPctButtons(key, containerSel, cap){
+    const el = $(containerSel);
     el.innerHTML = "";
-    const canInc = S.critChance < 90;
-    const can1 = canInc && (critChanceCost(S.critChance) <= S.points + 1e-9);
 
+    const cur = S[key];
+    const canInc = cur < cap;
+
+    const can1 = canInc && (expPctCost(cur) <= S.points + 1e-9);
+
+    // +5 비용 합산
     let cost5 = 0, can5 = false;
     if (canInc) {
-      const realDelta = Math.min(5, 90 - S.critChance);
-      for (let i=0;i<realDelta;i++) cost5 += critChanceCost(S.critChance + i);
+      const realDelta = Math.min(5, cap - cur);
+      for (let i=0;i<realDelta;i++) cost5 += expPctCost(cur + i);
       can5 = cost5 <= S.points + 1e-9;
     }
 
     el.appendChild(makeBtn("+1", () => {
-      const ok = applyCritChance(1);
+      const ok = applyPctUpgrade(key, 1, cap);
       if (!ok) toast("포인트 부족");
       renderUpgrade();
     }, can1));
 
     el.appendChild(makeBtn("+5", () => {
-      const ok = applyCritChance(5);
+      const ok = applyPctUpgrade(key, 5, cap);
       if (!ok) toast("포인트 부족");
       renderUpgrade();
     }, can5));
@@ -944,9 +980,7 @@ ns();
     if (S.isGrowing) {
       const tSec = Math.max(0, Math.floor((now() - S.growStartAt)/1000));
       const eff = efficiencyPct(tSec);
-      const E = eff / 100;
-      const C = currentC();
-      const gain = Math.floor(tSec * C * E);
+      const gain = Math.floor(tSec * currentC() * (eff/100));
 
       $("#points").textContent = fmt(S.points + gain);
       live.style.display = "block";
@@ -969,7 +1003,7 @@ ns();
 
     const mins = Math.floor(S.focusSecondsSinceRebirth / 60);
     $("#rebirthInfo").textContent =
-      `환생: 누적 ${mins}분 / 50분 · 이번 생 최고 Lv ${S.maxLevelThisLife}`;
+      `환생: 누적 ${mins}분 / 50분 · 이번 생 최고 Lv ${S.maxLevelThisLife} · (환생 시 ΔC0 ${(currentC()*0.10).toFixed(2)})`;
 
     if ($("#upgradeOverlay").style.display === "block") renderUpgrade();
   }
@@ -980,11 +1014,6 @@ ns();
     $("#turnLimit").textContent = TURN_LIMIT;
     $("#battleTop").textContent = `Enemy Lv ${S.enemyLevel} · ${battle.enemyType}`;
 
-    const eHP = enemyMaxHPFromBattle(battle);
-    battle.enemyMaxHP = eHP; // 표시 갱신을 위해
-    const mHP = playerMaxHP();
-    battle.meMaxHP = mHP;
-
     $("#enemyLine").textContent =
       `E(${battle.enemyType}): ATK ${battle.enemyAtk} DEF ${battle.enemyDef} MATK ${battle.enemyMAtk} MDEF ${battle.enemyMDef} HP ${battle.enemyMaxHP}`;
 
@@ -993,7 +1022,6 @@ ns();
     $("#turn").textContent = battle.turn;
 
     if (battle.chosenMode) {
-      // 추천은 기존 컨셉 유지: MAG 적이면 PHY가 유리, PHY 적이면 MAG가 유리
       const recommend = (battle.enemyType === "MAG") ? "물리" : "마법";
       $("#modeFixed").textContent =
         `이번 전투: ${battle.chosenMode === "phy" ? "물리" : "마법"} 고정 · 추천: ${recommend}`;
@@ -1003,21 +1031,25 @@ ns();
     if (battle.log.length === 0) logEl.textContent = "";
     else {
       logEl.innerHTML = battle.log.map(x => {
-        const cls = x.highlight ? "crit" : "";
+        const cls = x.hi ? "hi" : "";
         return `<div class="${cls}">${escapeHtml(x.line)}</div>`;
       }).join("");
       logEl.scrollTop = logEl.scrollHeight;
     }
   }
 
-  // ---------- Persistence ----------
+  // ---------- Storage ----------
   function save(){
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
   }
   function load(){
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return structuredClone(DEFAULT);
+      if (!raw) {
+        const s = structuredClone(DEFAULT);
+        s.enemyAtk = 0; s.enemyDef = 0; s.enemyMAtk = 0; s.enemyMDef = 0;
+        return s;
+      }
       return Object.assign(structuredClone(DEFAULT), JSON.parse(raw));
     } catch(e) {
       return structuredClone(DEFAULT);
@@ -1028,21 +1060,17 @@ ns();
   regenEnemyForLevel();
   render();
 
-  // 집중중 화면 실시간 갱신
+  // 화면 갱신(집중 경과 표시)
   setInterval(render, 1000);
 
-  // Wake lock (지원되는 경우)
+  // wake lock (optional)
   let wakeLock = null;
   async function tryWakeLock(){
     try {
-      if ("wakeLock" in navigator && !wakeLock) {
-        wakeLock = await navigator.wakeLock.request("screen");
-      }
+      if ("wakeLock" in navigator && !wakeLock) wakeLock = await navigator.wakeLock.request("screen");
     } catch(e) {}
   }
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) tryWakeLock();
-  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) tryWakeLock(); });
   tryWakeLock();
 })();
 </script>
