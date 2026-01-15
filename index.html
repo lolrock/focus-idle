@@ -878,6 +878,10 @@ function render(){
   // ---------- Boot ----------
   regenEnemyForLevel();
   render();
+  setInterval(() => {
+  if (S.isGrowing) render();
+}, 1000);
+
 
   // Optional: keep screen awake (if supported)
   // (Not required, since you said "screen-on", but it helps.)
