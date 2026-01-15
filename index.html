@@ -117,11 +117,6 @@
       </div>
 
       <div class="row">
-        <div class="rowHead"><div class="name">HP</div><div class="val" id="vHP">0</div></div>
-        <div class="rowBtns" id="bHP"></div>
-      </div>
-
-      <div class="row">
         <div class="rowHead"><div class="name">MATK</div><div class="val" id="vMATK">0</div></div>
         <div class="rowBtns" id="bMATK"></div>
       </div>
@@ -310,7 +305,6 @@
     // player stats
     atk: 5,
     def: 5,
-    hp: 100,
     matk: 5,
     mdef: 5,
 
@@ -359,11 +353,15 @@
     return 50 + 5 * S.critDmgUp;
   }
   function playerPowerMetric(){
-    return (S.atk + S.def + S.matk + S.mdef) + (S.hp / 10);
+    return (S.atk + S.def + S.matk + S.mdef) + (playerMaxHP() / 10);
   }
   function enemyPowerMetricFromStats(enemyAtk, enemyDef, enemyMAtk, enemyMDef){
     return (enemyAtk + enemyDef + enemyMAtk + enemyMDef);
   }
+  function playerMaxHP(){
+  return (S.atk + S.def + S.matk + S.mdef) * 10;
+  }
+
 
   // ---------- Enemy generation ----------
   function regenEnemyForLevel(){
@@ -434,15 +432,6 @@
       if (cost > S.points + 1e-9) return false;
       S.points -= cost;
       S[statKey] += n;
-      save(); render();
-      return true;
-    }
-    if (statKey === "hp") {
-      const s = S.hp;
-      const cost = seriesCostLinear(s, n, 1);
-      if (cost > S.points + 1e-9) return false;
-      S.points -= cost;
-      S.hp += n;
       save(); render();
       return true;
     }
@@ -528,6 +517,7 @@
   }
 
   function openBattle(){
+    const maxHP = playerMaxHP();
     if (S.isGrowing) return;
 
     battle = {
@@ -539,8 +529,8 @@
       enemyMDef: S.enemyMDef,
       enemyMaxHP: 0,
       enemyHP: 0,
-      meMaxHP: S.hp,
-      meHP: S.hp,
+      meMaxHP: maxHP,
+      meHP: maxHP,
       turn: 0,
       log: [],
       _busy: false
@@ -715,7 +705,7 @@
     S.maxLevelThisLife = 1;
 
     S.points = 0;
-    S.atk = 5; S.def = 5; S.hp = 100;
+    S.atk = 5; S.def = 5;
     S.matk = 5; S.mdef = 5;
     S.critChance = 0; S.critDmgUp = 0;
 
@@ -742,6 +732,7 @@
 
     // DEFAULT 기반 merge (구버전/누락 대비)
     S = Object.assign(structuredClone(DEFAULT), imported);
+    delete S.hp;
 
     // 안전장치: 성장 강제 종료
     S.isGrowing = false;
@@ -863,7 +854,6 @@
 
     $("#vATK").textContent = S.atk;
     $("#vDEF").textContent = S.def;
-    $("#vHP").textContent = S.hp;
     $("#vMATK").textContent = S.matk;
     $("#vMDEF").textContent = S.mdef;
 
