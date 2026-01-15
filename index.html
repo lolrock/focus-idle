@@ -75,6 +75,7 @@
   <div class="center">
     <div class="label">POINTS</div>
     <div class="points" id="points">0</div>
+    <div class="status" id="liveGain" style="margin-top:6px; font-size:13px; color:rgba(255,255,255,.55); display:none;"></div>
     <div class="status" id="status"></div>
     <div class="status" id="rebirthInfo" style="margin-top:10px; color:rgba(255,255,255,.35); font-size:12px;"></div>
   </div>
@@ -246,11 +247,39 @@
   let S = load();
 
   // If page reloads while growing, we stop without awarding (rule: only while visible).
-  if (S.isGrowing) {
-    S.isGrowing = false;
-    S.growStartAt = 0;
-    save();
-  }
+  const live = $("#liveGain");
+
+if (S.isGrowing) {
+  const tSec = Math.max(0, Math.floor((now() - S.growStartAt)/1000));
+  const eff = efficiencyPct(tSec);
+  const E = eff / 100;
+  const C = currentC();
+  const gain = Math.floor(tSec * C * E);
+
+  // 메인 큰 숫자를 "예상 누적"으로 보여주기
+  $("#points").textContent = fmt(S.points + gain);
+
+  // 보조 줄: 현재 쌓인 예상치 표시
+  live.style.display = "block";
+  live.textContent = `(+${fmt(gain)} 누적 중 · 효율 ${eff}%)`;
+
+  $("#status").innerHTML = `성장중<br>효율 ${eff}%`;
+  $("#btnGrow").textContent = "정산하기";
+  $("#btnUpgrade").disabled = true;
+  $("#btnBattle").disabled = true;
+} else {
+  // 대기 상태에서는 원래 포인트만
+  $("#points").textContent = fmt(S.points);
+
+  live.style.display = "none";
+  live.textContent = "";
+
+  $("#status").textContent = "대기";
+  $("#btnGrow").textContent = "성장중";
+  $("#btnUpgrade").disabled = false;
+  $("#btnBattle").disabled = false;
+}
+
 
   // ---------- Derived ----------
   function enemyPowerForLevel(level){
@@ -688,68 +717,96 @@
   }
 
   function renderStatButtons(key, containerSel){
-    const el = $(containerSel);
-    el.innerHTML = "";
-    const v = S[key];
+  const el = $(containerSel);
+  el.innerHTML = "";
+  const v = S[key];
 
-    const add = (n) => {
-      const ok = applyUpgrade(key, n);
-      if (!ok) toast("포인트 부족");
-      renderUpgrade();
-    };
+  const factor = (key === "hp") ? 1 : 10;
+  const s = S[key];
 
-    el.appendChild(makeBtn("+1", () => add(1), true));
-    el.appendChild(makeBtn("+10", () => add(10), true));
+  const cost1 = seriesCostLinear(s, 1, factor);
+  const cost10 = seriesCostLinear(s, 10, factor);
+  const cost100 = seriesCostLinear(s, 100, factor);
 
-    const bigEnabled = v >= 100;
-    el.appendChild(makeBtn("+100", () => add(100), bigEnabled));
+  const can1 = cost1 <= S.points + 1e-9;
+  const can10 = cost10 <= S.points + 1e-9;
 
-    // MAX enabled only if stat >= 100 (your rule)
-    const maxEnabled = v >= 100;
-    el.appendChild(makeBtn("MAX", () => {
-      // Max up within points
-      const factor = (key === "hp") ? 1 : 10;
-      const s = S[key];
-      const n = maxAffordableN(s, factor, S.points);
-      if (n <= 0) { toast("포인트 부족"); return; }
-      // apply in chunks (fast, but still exact)
-      applyUpgrade(key, n);
-      renderUpgrade();
-    }, maxEnabled));
+  const bigEnabled = v >= 100;
+  const can100 = bigEnabled && (cost100 <= S.points + 1e-9);
+
+  const nMax = maxAffordableN(s, factor, S.points);
+  const canMax = bigEnabled && nMax > 0;
+
+  const add = (n) => {
+    const ok = applyUpgrade(key, n);
+    if (!ok) toast("포인트 부족");
+    renderUpgrade();
+  };
+
+  el.appendChild(makeBtn("+1", () => add(1), can1));
+  el.appendChild(makeBtn("+10", () => add(10), can10));
+  el.appendChild(makeBtn("+100", () => add(100), can100));
+
+  el.appendChild(makeBtn("MAX", () => {
+    if (nMax <= 0) { toast("포인트 부족"); return; }
+    applyUpgrade(key, nMax);
+    renderUpgrade();
+  }, canMax));
+}
+
+
+function renderCritButtons(){
+  const el = $("#bCrit");
+  el.innerHTML = "";
+  const canInc = S.critChance < 90;
+
+  const can1 = canInc && (critChanceCost(S.critChance) <= S.points + 1e-9);
+
+  // +5는 5번 비용 합이 필요하니 계산
+  let cost5 = 0, can5 = false;
+  if (canInc) {
+    const realDelta = Math.min(5, 90 - S.critChance);
+    for (let i=0;i<realDelta;i++) cost5 += critChanceCost(S.critChance + i);
+    can5 = cost5 <= S.points + 1e-9;
   }
 
-  function renderCritButtons(){
-    const el = $("#bCrit");
-    el.innerHTML = "";
-    const canPlus1 = S.critChance < 90;
-    el.appendChild(makeBtn("+1", () => {
-      const ok = applyCritChance(1);
-      if (!ok) toast("포인트 부족");
-      renderUpgrade();
-    }, canPlus1));
+  el.appendChild(makeBtn("+1", () => {
+    const ok = applyCritChance(1);
+    if (!ok) toast("포인트 부족");
+    renderUpgrade();
+  }, can1));
 
-    const canPlus5 = S.critChance < 90;
-    el.appendChild(makeBtn("+5", () => {
-      const ok = applyCritChance(5);
-      if (!ok) toast("포인트 부족");
-      renderUpgrade();
-    }, canPlus5));
-  }
+  el.appendChild(makeBtn("+5", () => {
+    const ok = applyCritChance(5);
+    if (!ok) toast("포인트 부족");
+    renderUpgrade();
+  }, can5));
+}
 
-  function renderCritDmgButtons(){
-    const el = $("#bCritDmg");
-    el.innerHTML = "";
-    el.appendChild(makeBtn("+1", () => {
-      const ok = applyCritDmgUp(1);
-      if (!ok) toast("포인트 부족");
-      renderUpgrade();
-    }, true));
-    el.appendChild(makeBtn("+5", () => {
-      const ok = applyCritDmgUp(5);
-      if (!ok) toast("포인트 부족");
-      renderUpgrade();
-    }, true));
-  }
+
+function renderCritDmgButtons(){
+  const el = $("#bCritDmg");
+  el.innerHTML = "";
+
+  const can1 = critDmgCost(S.critDmgUp) <= S.points + 1e-9;
+
+  let cost5 = 0;
+  for (let i=0;i<5;i++) cost5 += critDmgCost(S.critDmgUp + i);
+  const can5 = cost5 <= S.points + 1e-9;
+
+  el.appendChild(makeBtn("+1", () => {
+    const ok = applyCritDmgUp(1);
+    if (!ok) toast("포인트 부족");
+    renderUpgrade();
+  }, can1));
+
+  el.appendChild(makeBtn("+5", () => {
+    const ok = applyCritDmgUp(5);
+    if (!ok) toast("포인트 부족");
+    renderUpgrade();
+  }, can5));
+}
+
 
   // ---------- Render ----------
   function render(){
