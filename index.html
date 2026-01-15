@@ -545,7 +545,7 @@
       if ($("#battleOverlay").style.display !== "block") return;
       if (!battle.chosenMode) return;
       doTurn(battle.chosenMode);
-    }, 500); // 0.5s per turn
+    }, 100); // 0.5s per turn
   }
   function stopBattleLoop(){
     if (battleTimer) { clearInterval(battleTimer); battleTimer = null; }
