@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Focus Idle (v5.1)</title>
+  <title>Focus Idle (v5.2)</title>
   <style>
     :root { --bg:#000; --fg:#fff; --muted:rgba(255,255,255,.65); --dim:rgba(255,255,255,.25); }
     html,body { height:100%; margin:0; background:var(--bg); color:var(--fg);
@@ -111,6 +111,7 @@
       color:rgba(255,255,255,.70);
       line-height:1.55;
       display:none;
+      white-space:pre-line;
     }
   </style>
 </head>
@@ -208,24 +209,11 @@
         </div>
       </div>
 
+      <!-- 통합 스탯 -->
       <div class="row">
-        <div class="rowHead"><div class="name">ATK</div><div class="val" id="vATK">0</div></div>
-        <div class="rowBtns" id="bATK"></div>
-      </div>
-
-      <div class="row">
-        <div class="rowHead"><div class="name">DEF</div><div class="val" id="vDEF">0</div></div>
-        <div class="rowBtns" id="bDEF"></div>
-      </div>
-
-      <div class="row">
-        <div class="rowHead"><div class="name">MATK</div><div class="val" id="vMATK">0</div></div>
-        <div class="rowBtns" id="bMATK"></div>
-      </div>
-
-      <div class="row">
-        <div class="rowHead"><div class="name">MDEF</div><div class="val" id="vMDEF">0</div></div>
-        <div class="rowBtns" id="bMDEF"></div>
+        <div class="rowHead"><div class="name">STAT (ATK/DEF/MATK/MDEF 통합)</div><div class="val" id="vSTAT">0</div></div>
+        <div class="rowBtns" id="bSTAT"></div>
+        <div class="hint">비용: 10pt부터 시작, 구매할 때마다 1.5배 · 환생 시 구매횟수(요구량)만 초기화</div>
       </div>
 
       <div class="row" id="rowCrit">
@@ -238,6 +226,13 @@
         <div class="rowHead"><div class="name">CRIT+</div><div class="val" id="vCritDmg">+50%</div></div>
         <div class="rowBtns" id="bCritDmg"></div>
         <div class="hint">추가 피해량 +50% 시작, +5% 단위, 상한 없음, 비용 10×2^업횟수</div>
+      </div>
+
+      <!-- 관통 복구 -->
+      <div class="row" id="rowPierce">
+        <div class="rowHead"><div class="name">PIERCE%</div><div class="val" id="vPierce">0%</div></div>
+        <div class="rowBtns" id="bPierce"></div>
+        <div class="hint">0% 시작, 상한 90%, 비용 10×2^현재% (물리/마법 공통으로 방어력 %감소)</div>
       </div>
 
       <div class="row">
@@ -346,10 +341,16 @@
   const DEFAULT = {
     points: 0,
 
+    // 통합 스탯
+    stat: 5,            // ATK/DEF/MATK/MDEF 동일값
+    statBuys: 0,        // 이번 생 통합스탯 구매횟수(요구량 증가용, 환생 시 0으로 리셋)
+
+    // (호환용: 저장된 예전 값이 있을 수 있어 남겨둠. 실제 계산은 stat로 동기화)
     atk: 5, def: 5, matk: 5, mdef: 5,
 
     critChance: 0,      // %
     critDmgUp: 0,       // bonus = 50 + 5*critDmgUp
+    piercePct: 0,       // % (0~90)
 
     enemyLevel: 1,
     enemyBasePower: 30,
@@ -369,6 +370,14 @@
 
   let S = load();
 
+  // 항상 통합 스탯으로 동기화
+  function syncStats(){
+    const v = Math.max(1, Math.floor(S.stat || 5));
+    S.stat = v;
+    S.atk = v; S.def = v; S.matk = v; S.mdef = v;
+  }
+  syncStats();
+
   // ---------- Derived ----------
   function enemyPowerForLevel(level){
     const k = level - 1;
@@ -385,10 +394,13 @@
     return 20;
   }
   function critBonusPct(){ return 50 + 5 * S.critDmgUp; }
+  function pierce01(){ return Math.max(0, Math.min(0.9, (S.piercePct || 0) / 100)); }
   function playerMaxHP(){
+    syncStats();
     return (S.atk + S.def + S.matk + S.mdef) * 5;
   }
   function playerPowerMetric(){
+    syncStats();
     return (S.atk + S.def + S.matk + S.mdef);
   }
   function enemyPowerMetricFromStats(a,d,ma,md){
@@ -447,34 +459,49 @@
   document.addEventListener("visibilitychange", () => { if (document.hidden) settleGrowth(); });
   window.addEventListener("pagehide", () => settleGrowth());
 
-  // ---------- Upgrade costs ----------
-  function seriesCostLinear(s, n, factor){
-    return factor * (n * (2*s + n - 1) / 2);
-  }
-  function maxAffordableN(s, factor, points){
-    const B = (2*s - 1);
-    const C = -(2 * (points / factor));
-    const disc = B*B - 4*C;
-    if (disc < 0) return 0;
-    const n = Math.floor((-B + Math.sqrt(disc)) / 2);
-    return Math.max(0, n);
-  }
-  function applyUpgrade(statKey, n){
-    if (n <= 0) return false;
-    const isBig = (statKey === "atk" || statKey === "def" || statKey === "matk" || statKey === "mdef");
-    if (!isBig) return false;
+  // ---------- Unified STAT costs (x1.5 each buy) ----------
+  const STAT_BASE_COST = 10;
+  const STAT_GROWTH = 1.5;
 
-    const s = S[statKey];
-    const cost = seriesCostLinear(s, n, 10);
+  function statNextCost(buyIndex){
+    return STAT_BASE_COST * Math.pow(STAT_GROWTH, buyIndex);
+  }
+  function statCostForN(startBuyIndex, n){
+    // sum_{i=0..n-1} base*growth^(start+i)
+    if (n <= 0) return 0;
+    const a = STAT_BASE_COST * Math.pow(STAT_GROWTH, startBuyIndex);
+    if (STAT_GROWTH === 1) return a * n;
+    return a * (Math.pow(STAT_GROWTH, n) - 1) / (STAT_GROWTH - 1);
+  }
+  function maxAffordableStatN(){
+    // incrementally (n up to 100) is enough for UX
+    let n = 0;
+    let cost = 0;
+    while (n < 100) {
+      const c = statNextCost(S.statBuys + n);
+      if (cost + c > S.points + 1e-9) break;
+      cost += c;
+      n++;
+    }
+    return n;
+  }
+  function applyStatUpgrade(n){
+    if (n <= 0) return false;
+    const cost = statCostForN(S.statBuys, n);
     if (cost > S.points + 1e-9) return false;
 
     S.points -= cost;
-    S[statKey] += n;
+    S.stat += n;
+    S.statBuys += n;
+    syncStats();
     save(); render();
     return true;
   }
 
+  // ---------- Crit / CritDmg / Pierce costs (keep as before) ----------
   function critChanceCost(c){ return 10 * Math.pow(2, c); }
+  function pierceCost(p){ return 10 * Math.pow(2, p); }
+
   function applyCritChance(delta){
     if (delta <= 0) return false;
     const target = Math.min(90, S.critChance + delta);
@@ -491,6 +518,7 @@
     save(); render();
     return true;
   }
+
   function critDmgCost(k){ return 10 * Math.pow(2, k); }
   function applyCritDmgUp(deltaUpgrades){
     if (deltaUpgrades <= 0) return false;
@@ -505,6 +533,23 @@
     return true;
   }
 
+  function applyPierce(delta){
+    if (delta <= 0) return false;
+    const target = Math.min(90, (S.piercePct || 0) + delta);
+    const realDelta = target - (S.piercePct || 0);
+    if (realDelta <= 0) return false;
+
+    let cost = 0;
+    for (let i=0;i<realDelta;i++){
+      cost += pierceCost((S.piercePct || 0) + i);
+      if (cost > S.points + 1e-9) return false;
+    }
+    S.points -= cost;
+    S.piercePct = (S.piercePct || 0) + realDelta;
+    save(); render();
+    return true;
+  }
+
   // ---------- Battle ----------
   const TURN_LIMIT = 30;
   const LOG_LIMIT = 30;
@@ -513,9 +558,9 @@
   const KM = 120;
   const MAGIC_HP_RATE = 0.06;
 
-  const TURN_MS = 100;            // ✅ 0.1초 / 턴
-  const OVERKILL_HP_PCT = 0.90;   // ✅ 남은 HP 90% 이상이면 OVERKILL
-  const SKIP2_HP_PCT = 0.50;      // ✅ 남은 HP 50% 이상이면 +2레벨
+  const TURN_MS = 100;
+  const OVERKILL_HP_PCT = 0.90;
+  const SKIP2_HP_PCT = 0.50;
 
   let battle = null;
   let battleTimer = null;
@@ -554,11 +599,12 @@
   }
 
   function openBattle(){
+    syncStats();
     const maxHP = playerMaxHP();
     if (S.isGrowing) return;
 
     battle = {
-      chosenMode: null, // "phy" | "mag"
+      chosenMode: null,
       enemyType: S.enemyType,
       enemyAtk: S.enemyAtk,
       enemyDef: S.enemyDef,
@@ -598,7 +644,11 @@
   }
 
   function playerPhysicalToEnemy(){
-    const base = dmgPhysical(S.atk, battle.enemyDef);
+    syncStats();
+    const p = pierce01();
+    const effDef = Math.max(0, battle.enemyDef * (1 - p)); // 관통 적용
+    const base = dmgPhysical(S.atk, effDef);
+
     const roll = Math.random() * 100;
     const isCrit = roll < S.critChance;
     const mult = isCrit ? (1 + (critBonusPct()/100)) : 1;
@@ -606,10 +656,14 @@
     return { dmg, isCrit };
   }
   function playerMagicToEnemy(){
-    const dmg = dmgMagic(battle.meHP, S.matk, battle.enemyMDef);
+    syncStats();
+    const p = pierce01();
+    const effMDef = Math.max(0, battle.enemyMDef * (1 - p)); // 관통 적용
+    const dmg = dmgMagic(battle.meHP, S.matk, effMDef);
     return { dmg };
   }
   function enemyCounterToPlayer(){
+    syncStats();
     if (battle.enemyType === "PHY") {
       const dmg = dmgPhysical(battle.enemyAtk, S.def);
       return { dmg, type: "PHY" };
@@ -706,7 +760,6 @@
       S.maxLevelThisLife = Math.max(S.maxLevelThisLife, S.enemyLevel);
 
       if (myHpPct >= OVERKILL_HP_PCT) {
-        // ✅ OVERKILL: 남은 HP 90% 이상이면 발동
         const ratio = ratioNowForOverkill();
         let k = ratio > 1 ? Math.ceil(Math.log(ratio) / Math.log(1.1)) : 1;
         k = Math.max(1, k);
@@ -717,7 +770,6 @@
         S.enemyLevel += k;
         regenEnemyForLevel();
       } else if (myHpPct >= SKIP2_HP_PCT) {
-        // ✅ 남은 HP 50% 이상이면 2레벨 스킵
         S.enemyLevel += 2;
         regenEnemyForLevel();
       } else {
@@ -746,9 +798,14 @@
     S.focusSecondsSinceRebirth = 0;
     S.maxLevelThisLife = 1;
 
+    // 포인트/레벨은 리셋하되,
     S.points = 0;
-    S.atk = 5; S.def = 5; S.matk = 5; S.mdef = 5;
-    S.critChance = 0; S.critDmgUp = 0;
+
+    // ✅ 통합 스탯은 "유지", 대신 요구량(구매횟수)만 초기화
+    S.statBuys = 0;
+
+    // ✅ 치명/치피/관통은 유지 (요구량도 그대로 유지)
+    // S.critChance / S.critDmgUp / S.piercePct 유지
 
     S.enemyLevel = 1;
     regenEnemyForLevel();
@@ -797,7 +854,7 @@
     if (!rebirthReady()) { toast(`환생 가능까지 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분`); return; }
     const delta = S.maxLevelThisLife / 100;
     const ok = confirm(
-      `환생하시겠습니까?\n\n이번 생 최고 레벨: ${S.maxLevelThisLife}\nΔC0 = ${delta.toFixed(2)}\nC0: ${S.c0.toFixed(2)} → ${(S.c0+delta).toFixed(2)}\n\n(레벨/스탯/포인트 리셋)`
+      `환생하시겠습니까?\n\n이번 생 최고 레벨: ${S.maxLevelThisLife}\nΔC0 = ${delta.toFixed(2)}\nC0: ${S.c0.toFixed(2)} → ${(S.c0+delta).toFixed(2)}\n\n(레벨/포인트 리셋, 통합 스탯 구매요구량만 초기화)`
     );
     if (ok) doRebirth();
   });
@@ -865,53 +922,43 @@
   }
 
   function renderUpgrade(){
+    syncStats();
     $("#uPoints").textContent = fmt(S.points);
 
-    $("#vATK").textContent = S.atk;
-    $("#vDEF").textContent = S.def;
-    $("#vMATK").textContent = S.matk;
-    $("#vMDEF").textContent = S.mdef;
+    $("#vSTAT").textContent = S.stat;
 
     $("#vCrit").textContent = `${S.critChance}%`;
     $("#vCritDmg").textContent = `+${critBonusPct()}%`;
+    $("#vPierce").textContent = `${S.piercePct || 0}%`;
 
     const canReb = rebirthReady();
     $("#vRebirth").textContent = canReb
       ? `가능 (최고Lv ${S.maxLevelThisLife}, ΔC0 ${(S.maxLevelThisLife/100).toFixed(2)})`
       : `불가 (남은 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분)`;
 
-    renderStatButtons("atk", "#bATK");
-    renderStatButtons("def", "#bDEF");
-    renderStatButtons("matk", "#bMATK");
-    renderStatButtons("mdef", "#bMDEF");
+    renderStatButtons();
     renderCritButtons();
     renderCritDmgButtons();
+    renderPierceButtons();
   }
 
-  function renderStatButtons(key, containerSel){
-    const el = $(containerSel);
-    if (!el) return;
+  function renderStatButtons(){
+    const el = $("#bSTAT");
     el.innerHTML = "";
 
-    const v = S[key];
-    const factor = 10;
-    const s = S[key];
-
-    const cost1 = seriesCostLinear(s, 1, factor);
-    const cost10 = seriesCostLinear(s, 10, factor);
-    const cost100 = seriesCostLinear(s, 100, factor);
+    const cost1 = statCostForN(S.statBuys, 1);
+    const cost10 = statCostForN(S.statBuys, 10);
+    const cost100 = statCostForN(S.statBuys, 100);
 
     const can1 = cost1 <= S.points + 1e-9;
     const can10 = cost10 <= S.points + 1e-9;
+    const can100 = cost100 <= S.points + 1e-9;
 
-    const bigEnabled = v >= 100;
-    const can100 = bigEnabled && (cost100 <= S.points + 1e-9);
-
-    const nMax = maxAffordableN(s, factor, S.points);
-    const canMax = bigEnabled && nMax > 0;
+    const nMax = maxAffordableStatN();
+    const canMax = nMax > 0;
 
     const add = (n) => {
-      const ok = applyUpgrade(key, n);
+      const ok = applyStatUpgrade(n);
       if (!ok) toast("포인트 부족");
       renderUpgrade();
     };
@@ -919,16 +966,15 @@
     el.appendChild(makeBtn("+1", () => add(1), can1));
     el.appendChild(makeBtn("+10", () => add(10), can10));
     el.appendChild(makeBtn("+100", () => add(100), can100));
-    el.appendChild(makeBtn("MAX", () => {
+    el.appendChild(makeBtn("MAX(≤100)", () => {
       if (nMax <= 0) { toast("포인트 부족"); return; }
-      applyUpgrade(key, nMax);
+      applyStatUpgrade(nMax);
       renderUpgrade();
     }, canMax));
   }
 
   function renderCritButtons(){
     const el = $("#bCrit");
-    if (!el) return;
     el.innerHTML = "";
     const canInc = S.critChance < 90;
 
@@ -956,7 +1002,6 @@
 
   function renderCritDmgButtons(){
     const el = $("#bCritDmg");
-    if (!el) return;
     el.innerHTML = "";
 
     const can1 = critDmgCost(S.critDmgUp) <= S.points + 1e-9;
@@ -978,6 +1023,34 @@
     }, can5));
   }
 
+  function renderPierceButtons(){
+    const el = $("#bPierce");
+    el.innerHTML = "";
+    const cur = S.piercePct || 0;
+    const canInc = cur < 90;
+
+    const can1 = canInc && (pierceCost(cur) <= S.points + 1e-9);
+
+    let cost5 = 0, can5 = false;
+    if (canInc) {
+      const realDelta = Math.min(5, 90 - cur);
+      for (let i=0;i<realDelta;i++) cost5 += pierceCost(cur + i);
+      can5 = cost5 <= S.points + 1e-9;
+    }
+
+    el.appendChild(makeBtn("+1", () => {
+      const ok = applyPierce(1);
+      if (!ok) toast("포인트 부족");
+      renderUpgrade();
+    }, can1));
+
+    el.appendChild(makeBtn("+5", () => {
+      const ok = applyPierce(5);
+      if (!ok) toast("포인트 부족");
+      renderUpgrade();
+    }, can5));
+  }
+
   // ---------- OFF Focus + Stealth Preview ----------
   let stealthUntil = 0;
   const STEALTH_MS = 1500;
@@ -988,14 +1061,12 @@
     if (ui.display !== "OFF") return;
 
     stealthUntil = now() + STEALTH_MS;
-    render(); // 즉시 한 번 보여주기
+    render();
     clearTimeout(triggerStealthPeek._t);
     triggerStealthPeek._t = setTimeout(() => render(), STEALTH_MS + 10);
   }
 
-  // 화면 탭/클릭 시 스텔스 미리보기
   $("#appRoot").addEventListener("click", (e) => {
-    // 설정/버튼 클릭은 제외하고 싶으면 여기서 필터 가능
     if (e.target && (e.target.closest("#btnSettings") || e.target.closest("button") || e.target.closest("#settingsOverlay"))) return;
     triggerStealthPeek();
   });
@@ -1023,6 +1094,7 @@
 
   // ---------- Render ----------
   function render(){
+    syncStats();
     const ui = S.ui || { display:"ON", refreshSec:1 };
     const live = $("#liveGain");
 
@@ -1043,7 +1115,8 @@
         if (showPeek) {
           const total = S.points + gain;
           peekEl.style.display = "block";
-          peekEl.textContent = `현재 포인트: ${fmt(total)}\n예상 증가: +${fmt(gain)} (효율 ${eff}%)`;
+          peekEl.textContent =
+            `현재 포인트: ${fmt(total)}\n예상 증가: +${fmt(gain)} (효율 ${eff}%)`;
         } else {
           peekEl.style.display = "none";
           peekEl.textContent = "";
@@ -1096,7 +1169,7 @@
     if (battle.chosenMode) {
       const recommend = (battle.enemyType === "MAG") ? "물리" : "마법";
       $("#modeFixed").textContent =
-        `이번 전투: ${battle.chosenMode === "phy" ? "물리" : "마법"} 고정 · 추천: ${recommend}`;
+        `이번 전투: ${battle.chosenMode === "phy" ? "물리" : "마법"} 고정 · 추천: ${recommend} · 관통 ${S.piercePct||0}%`;
     }
 
     const logEl = $("#log");
@@ -1139,6 +1212,15 @@
       }
       const loaded = Object.assign(structuredClone(DEFAULT), JSON.parse(raw));
       loaded.ui = Object.assign({ display:"ON", refreshSec:1 }, loaded.ui || {});
+
+      // 구버전 호환: stat이 없으면 atk 기준으로 만든다
+      if (loaded.stat == null) {
+        const base = loaded.atk || 5;
+        loaded.stat = base;
+      }
+      if (loaded.statBuys == null) loaded.statBuys = 0;
+      if (loaded.piercePct == null) loaded.piercePct = 0;
+
       return loaded;
     } catch(e) {
       return structuredClone(DEFAULT);
