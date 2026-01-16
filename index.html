@@ -3,17 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Focus Idle v5</title>
+  <title>Focus Idle (v5.1)</title>
   <style>
     :root { --bg:#000; --fg:#fff; --muted:rgba(255,255,255,.65); --dim:rgba(255,255,255,.25); }
     html,body { height:100%; margin:0; background:var(--bg); color:var(--fg);
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,AppleSDGothicNeo,Helvetica,Arial,sans-serif; }
     .app { height:100%; display:flex; flex-direction:column; }
-    .top { padding:14px 16px 8px; font-size:12px; color:var(--muted); display:flex; justify-content:space-between; gap:10px; }
+    .top {
+      padding:14px 16px 8px; font-size:12px; color:var(--muted);
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+    }
+    .topRightWrap{ display:flex; align-items:center; gap:10px; }
+    .gear {
+      width:34px; height:34px; border-radius:10px;
+      border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.06);
+      color:var(--fg);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer;
+      user-select:none;
+    }
+    .gear:active { transform:scale(.98); }
     .center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:16px; }
     .label { font-size:12px; color:var(--muted); letter-spacing:.12em; }
     .points { font-size:56px; font-weight:700; margin:10px 0 6px; }
-    .status { margin-top:10px; font-size:14px; color:var(--muted); line-height:1.6; }
+    .status { margin-top:14px; font-size:14px; color:var(--muted); line-height:1.6; }
     .bottom { padding:10px 12px 16px; position:sticky; bottom:0;
       background:linear-gradient(to top, rgba(0,0,0,.95), rgba(0,0,0,.65), rgba(0,0,0,0)); }
     .btnrow { display:flex; gap:10px; }
@@ -48,33 +62,76 @@
 
     /* Battle */
     .battleBox { padding:16px; }
-    .bigline { font-size:14px; font-weight:700; margin:8px 0 12px; line-height:1.55; }
+    .bigline { font-size:16px; font-weight:700; margin:8px 0 12px; }
     .hpbox { display:flex; justify-content:space-between; gap:12px; color:var(--muted); font-size:13px; }
-    .hpn { font-size:20px; color:var(--fg); font-weight:800; margin-top:6px; }
+    .hpn { font-size:20px; color:var(--fg); font-weight:700; margin-top:6px; }
     .log {
-      margin-top:14px; color:var(--muted); font-size:13px; line-height:1.7;
-      height:260px; overflow:auto;
+      margin-top:14px; color:var(--muted); font-size:14px; line-height:1.7;
+      height:240px; overflow:auto;
       border:1px solid rgba(255,255,255,.10); border-radius:12px;
       padding:10px 12px;
     }
-    .hl { color:var(--fg); }
-    .smallTop { color:var(--muted); font-size:12px; }
+    .crit { color:var(--fg); }
     .resultCenter { height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:18px; gap:10px; }
     .resultTitle { font-size:28px; font-weight:800; }
     .resultSub { color:var(--muted); font-size:14px; line-height:1.6; }
     .overkill { margin-top:8px; font-weight:800; letter-spacing:.08em; }
     .skipLine { color:var(--muted); font-size:14px; min-height:22px; }
     .confirmBtn { width:min(320px, 92%); }
+    .smallTop { color:var(--muted); font-size:12px; }
+
+    /* OFF black screen mode (when growing) */
+    .offFocus { background:#000 !important; }
+    .offFocus .top,
+    .offFocus .center,
+    .offFocus .bottom{
+      background:#000 !important;
+    }
+    .offFocus .label,
+    .offFocus .points,
+    .offFocus #liveGain,
+    .offFocus #status,
+    .offFocus #rebirthInfo{
+      display:none !important;
+    }
+    .elapsedOnly {
+      font-size:44px;
+      font-weight:800;
+      letter-spacing:.02em;
+      color:rgba(255,255,255,.90);
+    }
+    .elapsedSub {
+      margin-top:10px;
+      font-size:12px;
+      color:rgba(255,255,255,.35);
+    }
+    .stealthPeek {
+      margin-top:12px;
+      font-size:14px;
+      color:rgba(255,255,255,.70);
+      line-height:1.55;
+      display:none;
+    }
   </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="appRoot">
   <div class="top">
     <div id="topLeft">Enemy Lv 1</div>
-    <div id="topRight">C0 5.00 | C 5.00</div>
+    <div class="topRightWrap">
+      <div id="topRight">C0 5.00 | C 5.00</div>
+      <div class="gear" id="btnSettings" title="설정" aria-label="설정">⚙︎</div>
+    </div>
   </div>
 
   <div class="center">
+    <!-- OFF 모드 집중중일 때만 표시 -->
+    <div id="elapsedOnlyBox" style="display:none;">
+      <div class="elapsedOnly" id="elapsedOnly">00:00</div>
+      <div class="elapsedSub" id="elapsedSub">집중 중 (탭하면 잠깐 표시)</div>
+      <div class="stealthPeek" id="stealthPeek"></div>
+    </div>
+
     <div class="label">POINTS</div>
     <div class="points" id="points">0</div>
     <div class="status" id="liveGain" style="margin-top:6px; font-size:13px; color:rgba(255,255,255,.55); display:none;"></div>
@@ -82,11 +139,56 @@
     <div class="status" id="rebirthInfo" style="margin-top:10px; color:rgba(255,255,255,.35); font-size:12px;"></div>
   </div>
 
-  <div class="bottom">
-    <div class="btnrow">
+  <div class="bottom" id="bottomBar">
+    <div class="btnrow" id="btnRowNormal">
       <button id="btnUpgrade">업그레이드</button>
       <button id="btnBattle">전투</button>
       <button id="btnGrow">집중하기</button>
+    </div>
+
+    <!-- OFF 모드 집중중일 때만 사용: 정산하기 단독 -->
+    <div class="btnrow" id="btnRowSettleOnly" style="display:none;">
+      <button id="btnSettleOnly">정산하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="overlay" id="settingsOverlay" aria-hidden="true">
+  <div class="panel">
+    <div class="panelTop">
+      <h2>설정</h2>
+      <button id="btnSettingsClose" class="mini">닫기</button>
+    </div>
+    <div class="panelBody">
+      <div class="row">
+        <div class="rowHead">
+          <div class="name">표시</div>
+          <div class="val" id="vDisplayMode">ON</div>
+        </div>
+        <div class="rowBtns">
+          <button class="mini" id="optDisplayOn">ON</button>
+          <button class="mini" id="optDisplayOff">OFF</button>
+        </div>
+        <div class="hint">OFF + 집중중: 블랙스크린(경과시간) + 정산 버튼만 (탭하면 잠깐 표시)</div>
+      </div>
+
+      <div class="row">
+        <div class="rowHead">
+          <div class="name">갱신 주기</div>
+          <div class="val" id="vRefresh">1초</div>
+        </div>
+        <div class="rowBtns">
+          <button class="mini" id="optT1">1초</button>
+          <button class="mini" id="optT60">1분</button>
+          <button class="mini" id="optT300">5분</button>
+        </div>
+        <div class="hint">집중중 화면 갱신(표시 ON이면 포인트/예상치 갱신, OFF면 경과시간 갱신)</div>
+      </div>
+
+      <div class="row">
+        <div class="hint">저장은 localStorage의 key <b>focus_idle_save</b>에 저장됩니다.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -104,7 +206,6 @@
           <div class="name">포인트</div>
           <div class="val" id="uPoints">0</div>
         </div>
-        <div class="hint" id="uCostHint"></div>
       </div>
 
       <div class="row">
@@ -127,16 +228,16 @@
         <div class="rowBtns" id="bMDEF"></div>
       </div>
 
-      <div class="row">
+      <div class="row" id="rowCrit">
         <div class="rowHead"><div class="name">CRIT%</div><div class="val" id="vCrit">0%</div></div>
         <div class="rowBtns" id="bCrit"></div>
-        <div class="hint">플레이어 공격에만 적용 · 비용 10×2^현재%</div>
+        <div class="hint">0% 시작, 상한 90%, 비용 10×2^현재%</div>
       </div>
 
-      <div class="row">
-        <div class="rowHead"><div class="name">PEN%</div><div class="val" id="vPen">0%</div></div>
-        <div class="rowBtns" id="bPen"></div>
-        <div class="hint">방어력에 % 관통 적용 · 비용 10×2^현재%</div>
+      <div class="row" id="rowCritDmg">
+        <div class="rowHead"><div class="name">CRIT+</div><div class="val" id="vCritDmg">+50%</div></div>
+        <div class="rowBtns" id="bCritDmg"></div>
+        <div class="hint">추가 피해량 +50% 시작, +5% 단위, 상한 없음, 비용 10×2^업횟수</div>
       </div>
 
       <div class="row">
@@ -144,25 +245,11 @@
         <div class="rowBtns">
           <button id="btnRebirth" class="mini">환생</button>
         </div>
-        <div class="hint">
-          조건: 환생 이후 누적 집중 50분(3000초)<br/>
-          효과: 레벨 1 리셋 · 스탯 승계 · 통합스탯 요구량 초기화 · 포인트 0 · C0 10% 증가
-        </div>
-      </div>
-
-      <!-- SAVE / EXPORT / IMPORT -->
-      <div class="row">
-        <div class="rowHead"><div class="name">세이브</div><div class="val">복사/붙여넣기</div></div>
-        <div class="rowBtns">
-          <button id="btnExport" class="mini">내보내기(복사)</button>
-          <button id="btnImport" class="mini">가져오기(붙여넣기)</button>
-          <button id="btnImportClip" class="mini">클립보드에서 가져오기</button>
-        </div>
-        <div class="hint">기기 변경: 내보내기 → 다른 기기에서 가져오기</div>
+        <div class="hint">조건: 환생 이후 집중 누적 50분(3000초) 이상</div>
       </div>
 
       <div class="row">
-        <div class="hint">Tip: 탭이 꺼지거나 앱 전환 시 자동 정산 후 집중 종료됩니다.</div>
+        <div class="hint">Tip: 아이폰에서 탭이 꺼지거나 다른 앱으로 가면 자동 정산 후 집중 종료됩니다.</div>
       </div>
     </div>
   </div>
@@ -177,18 +264,16 @@
     </div>
     <div class="panelBody battleBox">
       <div class="smallTop" id="battleTop">Enemy Lv 1</div>
-
-      <div class="bigline" id="statLineMe">-</div>
-      <div class="bigline" id="statLineEnemy">-</div>
+      <div class="bigline" id="enemyLine">-</div>
 
       <div class="hpbox">
         <div style="flex:1;">
           <div>적 HP</div>
-          <div class="hpn"><span id="enemyHPpct">100</span>%</div>
+          <div class="hpn" id="enemyHP">0/0</div>
         </div>
         <div style="flex:1;">
           <div>내 HP</div>
-          <div class="hpn"><span id="meHPpct">100</span>%</div>
+          <div class="hpn" id="meHP">0/0</div>
         </div>
       </div>
 
@@ -203,7 +288,11 @@
       <div class="status" id="modeFixed" style="margin-top:10px; display:none;"></div>
 
       <div class="log" id="log"></div>
-      <div class="hint" style="margin-top:10px;">자동 진행: 0.5초에 1턴</div>
+
+      <div style="margin-top:12px;">
+        <button id="btnStep" class="mini" style="width:100%;">1턴 진행</button>
+      </div>
+      <div class="hint" style="margin-top:10px;">자동으로 0.1초에 1턴 진행됩니다. (선택한 타입 고정)</div>
     </div>
   </div>
 </div>
@@ -223,14 +312,18 @@
 
 <script>
 (() => {
-  /* ==========================
-     IMPORTANT: v4 저장 유지
-     ========================== */
-  const KEY = "focus_idle_v4"; // v4 KEY 유지 (데이터 안 날리기)
-  const SAVE_VER = 2;
+  const KEY = "focus_idle_save";
 
-  /* ---------- Utilities ---------- */
+  // ---------- Utilities ----------
   const now = () => Date.now();
+  const fmt = (n) => {
+    if (typeof n !== "number") return String(n);
+    if (n >= 1e9) return (n/1e9).toFixed(2) + "B";
+    if (n >= 1e6) return (n/1e6).toFixed(2) + "M";
+    if (n >= 1e3) return Math.floor(n).toLocaleString("en-US");
+    return (Math.floor(n)).toString();
+  };
+  const fmt2 = (n) => (Math.round(n * 100) / 100).toFixed(2);
   function $(sel){ return document.querySelector(sel); }
   function pad2(n){ return String(n).padStart(2,"0"); }
   function fmtTime(sec){
@@ -238,146 +331,91 @@
     const s = sec%60;
     return `${pad2(m)}:${pad2(s)}`;
   }
+  function escapeHtml(s){
+    return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+  }
   function toast(msg) {
     const el = $("#toast");
     el.textContent = msg;
     el.style.display = "block";
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => el.style.display = "none", 950);
+    toast._t = setTimeout(() => el.style.display = "none", 900);
   }
 
-  // 1.23e34 표기
-  function fmtSci(n){
-    if (!Number.isFinite(n)) return String(n);
-    const abs = Math.abs(n);
-    if (abs < 1000000) return Math.floor(n).toLocaleString("en-US");
-    const e = Math.floor(Math.log10(abs));
-    const m = n / Math.pow(10, e);
-    return `${m.toFixed(2)}e${e}`;
-  }
-  function fmt2(n){
-    if (!Number.isFinite(n)) return String(n);
-    return (Math.round(n*100)/100).toFixed(2);
-  }
-
-  /* ---------- Save Encode/Decode (copy/paste) ---------- */
-  function encodeSave(obj){
-    const payload = { v: SAVE_VER, t: Date.now(), s: obj };
-    const json = JSON.stringify(payload);
-    const b64 = btoa(unescape(encodeURIComponent(json)));
-    return `FI${SAVE_VER}:${b64}`;
-  }
-  function decodeSave(str){
-    const trimmed = String(str || "").trim();
-    const m = trimmed.match(/^FI(\d+):(.+)$/);
-    if (!m) throw new Error("형식이 올바르지 않음");
-    const b64 = m[2];
-    const json = decodeURIComponent(escape(atob(b64)));
-    const payload = JSON.parse(json);
-    if (!payload || typeof payload !== "object" || !payload.s) throw new Error("데이터 손상");
-    return payload.s;
-  }
-  async function copyToClipboard(text){
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    } catch(e) {}
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    ta.remove();
-    return ok;
-  }
-  async function readFromClipboard(){
-    if (navigator.clipboard && window.isSecureContext) return await navigator.clipboard.readText();
-    throw new Error("클립보드 읽기 미지원");
-  }
-
-  /* ---------- Core State ---------- */
+  // ---------- Core State ----------
   const DEFAULT = {
     points: 0,
 
-    // player stats
     atk: 5, def: 5, matk: 5, mdef: 5,
 
-    // meta upgrades
-    critChance: 0, // %
-    penPct: 0,     // %
+    critChance: 0,      // %
+    critDmgUp: 0,       // bonus = 50 + 5*critDmgUp
 
-    // integrated stat cost tracker (THIS LIFE ONLY, reset on rebirth)
-    bonusSpentThisLife: 0,
-
-    // enemy progression
     enemyLevel: 1,
     enemyBasePower: 30,
-    enemyType: "PHY", // "PHY" | "MAG"
+    enemyType: "PHY",
     enemyAtk: 10, enemyDef: 10, enemyMAtk: 5, enemyMDef: 5,
 
-    // growth
     isGrowing: false,
     growStartAt: 0,
 
-    // rebirth
     c0: 5.0,
     maxLevelThisLife: 1,
     focusSecondsSinceRebirth: 0,
-    rebirthCount: 0
+    rebirthCount: 0,
+
+    ui: { display: "ON", refreshSec: 1 }
   };
 
-  let S = loadMerged();
+  let S = load();
 
-  /* ---------- Derived ---------- */
+  // ---------- Derived ----------
   function enemyPowerForLevel(level){
-    // enemy power grows 10% per level
-    return Math.floor(S.enemyBasePower * Math.pow(1.1, level - 1));
+    const k = level - 1;
+    return Math.floor(S.enemyBasePower * Math.pow(1.1, k));
   }
   function currentC(){
-    // C(L) = C0 + floor((Lv-1)/3)
     return S.c0 + Math.floor((S.enemyLevel - 1) / 3);
   }
   function efficiencyPct(tSec){
-    // 유지: 80% 티어 포함
     if (tSec >= 300) return 100;
     if (tSec >= 180) return 80;
     if (tSec >= 120) return 60;
     if (tSec >= 60)  return 40;
     return 20;
   }
-
+  function critBonusPct(){ return 50 + 5 * S.critDmgUp; }
   function playerMaxHP(){
     return (S.atk + S.def + S.matk + S.mdef) * 5;
   }
+  function playerPowerMetric(){
+    return (S.atk + S.def + S.matk + S.mdef);
+  }
+  function enemyPowerMetricFromStats(a,d,ma,md){
+    return (a + d + ma + md);
+  }
 
-  /* ---------- Enemy generation ---------- */
+  // ---------- Enemy generation ----------
   function regenEnemyForLevel(){
     const power = enemyPowerForLevel(S.enemyLevel);
     S.enemyType = (Math.random() < 0.5) ? "PHY" : "MAG";
 
-    // split total power into PHY vs MAG biased
     const phyPower = Math.max(1, Math.floor(power * (S.enemyType === "PHY" ? 0.8 : 0.2)));
     const magPower = Math.max(1, Math.floor(power * (S.enemyType === "MAG" ? 0.8 : 0.2)));
 
-    // split inside phyPower -> atk/def
     const r1 = 0.35 + Math.random() * 0.30;
     S.enemyAtk = Math.max(1, Math.round(phyPower * r1));
     S.enemyDef = Math.max(0, phyPower - S.enemyAtk);
 
-    // split inside magPower -> matk/mdef
     const r2 = 0.35 + Math.random() * 0.30;
     S.enemyMAtk = Math.max(1, Math.round(magPower * r2));
     S.enemyMDef = Math.max(0, magPower - S.enemyMAtk);
 
     save();
   }
-  if (!S.enemyType || S.enemyMAtk == null || S.enemyMDef == null) regenEnemyForLevel();
+  if (!S.enemyAtk || S.enemyMAtk == null || S.enemyMDef == null || !S.enemyType) regenEnemyForLevel();
 
-  /* ---------- Growth ---------- */
+  // ---------- Growth ----------
   function startGrowth(){
     if (S.isGrowing) return;
     S.isGrowing = true;
@@ -385,12 +423,17 @@
     save();
     render();
   }
-  function settleGrowth(){
-    if (!S.isGrowing) return;
+  function calcGrowthPreview(){
     const tSec = Math.max(0, Math.floor((now() - S.growStartAt) / 1000));
-    const E = efficiencyPct(tSec) / 100;
+    const eff = efficiencyPct(tSec);
+    const E = eff / 100;
     const C = currentC();
     const gain = Math.floor(tSec * C * E);
+    return { tSec, eff, gain };
+  }
+  function settleGrowth(){
+    if (!S.isGrowing) return;
+    const { tSec, gain } = calcGrowthPreview();
 
     S.points += gain;
     S.focusSecondsSinceRebirth += tSec;
@@ -399,69 +442,98 @@
     S.growStartAt = 0;
     save();
     render();
-    if (tSec > 0) toast(`정산 +${fmtSci(gain)} (${tSec}s, ${Math.round(E*100)}%)`);
+    if (tSec > 0) toast(`정산 +${fmt(gain)} (${tSec}s)`);
   }
   document.addEventListener("visibilitychange", () => { if (document.hidden) settleGrowth(); });
   window.addEventListener("pagehide", () => settleGrowth());
 
-  /* ============================================================
-     Upgrade Cost Rules (v5)
-     - Integrated stats: cost per +1 = 10 * 2^(bonusSpentThisLife + i)
-       (rebirth resets bonusSpentThisLife only)
-     - Crit/Pen: cost per +1 = 10 * 2^(current value)
-       (rebirth does NOT reset)
-     ============================================================ */
-  function sumPow2(a, n){
-    // sum_{i=0..n-1} 2^(a+i) = 2^a * (2^n - 1)
-    return Math.pow(2, a) * (Math.pow(2, n) - 1);
+  // ---------- Upgrade costs ----------
+  function seriesCostLinear(s, n, factor){
+    return factor * (n * (2*s + n - 1) / 2);
   }
-  function bonusCost(n){
-    return 10 * sumPow2(S.bonusSpentThisLife, n);
+  function maxAffordableN(s, factor, points){
+    const B = (2*s - 1);
+    const C = -(2 * (points / factor));
+    const disc = B*B - 4*C;
+    if (disc < 0) return 0;
+    const n = Math.floor((-B + Math.sqrt(disc)) / 2);
+    return Math.max(0, n);
   }
-  function applyBonus(statKey, n){
+  function applyUpgrade(statKey, n){
     if (n <= 0) return false;
-    const cost = bonusCost(n);
+    const isBig = (statKey === "atk" || statKey === "def" || statKey === "matk" || statKey === "mdef");
+    if (!isBig) return false;
+
+    const s = S[statKey];
+    const cost = seriesCostLinear(s, n, 10);
     if (cost > S.points + 1e-9) return false;
+
     S.points -= cost;
     S[statKey] += n;
-    S.bonusSpentThisLife += n;
     save(); render();
     return true;
   }
 
-  function expCost(base, n){
-    // cost for +n when each step is 10*2^(base+i)
-    return 10 * sumPow2(base, n);
-  }
-  function applyCrit(n){
-    if (n <= 0) return false;
-    const cost = expCost(S.critChance, n);
-    if (cost > S.points + 1e-9) return false;
+  function critChanceCost(c){ return 10 * Math.pow(2, c); }
+  function applyCritChance(delta){
+    if (delta <= 0) return false;
+    const target = Math.min(90, S.critChance + delta);
+    const realDelta = target - S.critChance;
+    if (realDelta <= 0) return false;
+
+    let cost = 0;
+    for (let i=0;i<realDelta;i++){
+      cost += critChanceCost(S.critChance + i);
+      if (cost > S.points + 1e-9) return false;
+    }
     S.points -= cost;
-    S.critChance = Math.min(90, S.critChance + n);
+    S.critChance += realDelta;
     save(); render();
     return true;
   }
-  function applyPen(n){
-    if (n <= 0) return false;
-    const cost = expCost(S.penPct, n);
-    if (cost > S.points + 1e-9) return false;
+  function critDmgCost(k){ return 10 * Math.pow(2, k); }
+  function applyCritDmgUp(deltaUpgrades){
+    if (deltaUpgrades <= 0) return false;
+    let cost = 0;
+    for (let i=0;i<deltaUpgrades;i++){
+      cost += critDmgCost(S.critDmgUp + i);
+      if (cost > S.points + 1e-9) return false;
+    }
     S.points -= cost;
-    S.penPct = Math.min(90, S.penPct + n);
+    S.critDmgUp += deltaUpgrades;
     save(); render();
     return true;
   }
 
-  /* ---------- Battle ---------- */
+  // ---------- Battle ----------
   const TURN_LIMIT = 30;
-  const LOG_LIMIT = 80;
-  const TURN_MS = 500; // 0.5초
+  const LOG_LIMIT = 30;
+
+  const KP = 100;
+  const KM = 120;
+  const MAGIC_HP_RATE = 0.06;
+
+  const TURN_MS = 100;            // ✅ 0.1초 / 턴
+  const OVERKILL_HP_PCT = 0.90;   // ✅ 남은 HP 90% 이상이면 OVERKILL
+  const SKIP2_HP_PCT = 0.50;      // ✅ 남은 HP 50% 이상이면 +2레벨
 
   let battle = null;
   let battleTimer = null;
 
-  function enemyMaxHPFromStats(ea, ed, ema, emd){
-    return (ea + ed + ema + emd) * 5;
+  function mitig(def, K){ return 1 / (1 + (def / K)); }
+  function dmgPhysical(attAtk, targetDef){
+    const dmg = Math.floor(attAtk * mitig(targetDef, KP));
+    return Math.max(1, dmg);
+  }
+  function dmgMagic(attCurHP, attMatk, targetMDef){
+    const base = Math.floor(attCurHP * MAGIC_HP_RATE) + attMatk;
+    const dmg = Math.floor(base * mitig(targetMDef, KM));
+    return Math.max(1, dmg);
+  }
+
+  function pushLog(line, highlight=false){
+    battle.log.push({ line, highlight });
+    if (battle.log.length > LOG_LIMIT) battle.log.shift();
   }
 
   function showBattle(on){
@@ -475,10 +547,43 @@
   function showResult(on){
     $("#resultModal").style.display = on ? "block" : "none";
   }
-
-  function stopBattleLoop(){
-    if (battleTimer) { clearInterval(battleTimer); battleTimer = null; }
+  function showSettings(on){
+    $("#settingsOverlay").style.display = on ? "block" : "none";
+    $("#settingsOverlay").setAttribute("aria-hidden", on ? "false" : "true");
+    if (on) renderSettings();
   }
+
+  function openBattle(){
+    const maxHP = playerMaxHP();
+    if (S.isGrowing) return;
+
+    battle = {
+      chosenMode: null, // "phy" | "mag"
+      enemyType: S.enemyType,
+      enemyAtk: S.enemyAtk,
+      enemyDef: S.enemyDef,
+      enemyMAtk: S.enemyMAtk,
+      enemyMDef: S.enemyMDef,
+      enemyMaxHP: 0,
+      enemyHP: 0,
+      meMaxHP: maxHP,
+      meHP: maxHP,
+      turn: 0,
+      log: [],
+      _busy: false
+    };
+
+    battle.enemyMaxHP = (battle.enemyAtk + battle.enemyDef + battle.enemyMAtk + battle.enemyMDef) * 10;
+    battle.enemyHP = battle.enemyMaxHP;
+
+    $("#modeChooser").style.display = "flex";
+    $("#modeFixed").style.display = "none";
+    $("#btnStep").disabled = true;
+
+    showBattle(true);
+    renderBattle();
+  }
+
   function startBattleLoop(){
     stopBattleLoop();
     battleTimer = setInterval(() => {
@@ -488,93 +593,59 @@
       doTurn(battle.chosenMode);
     }, TURN_MS);
   }
-
-  function openBattle(){
-    if (S.isGrowing) return;
-
-    const meMax = playerMaxHP();
-    const enMax = enemyMaxHPFromStats(S.enemyAtk, S.enemyDef, S.enemyMAtk, S.enemyMDef);
-
-    battle = {
-      chosenMode: null, // "phy" | "mag"
-      enemyType: S.enemyType,
-      enemyAtk: S.enemyAtk,
-      enemyDef: S.enemyDef,
-      enemyMAtk: S.enemyMAtk,
-      enemyMDef: S.enemyMDef,
-      enemyMaxHP: enMax,
-      enemyHP: enMax,
-      meMaxHP: meMax,
-      meHP: meMax,
-      turn: 0,
-      log: [],
-      _busy: false
-    };
-
-    $("#modeChooser").style.display = "flex";
-    $("#modeFixed").style.display = "none";
-
-    showBattle(true);
-    renderBattle();
+  function stopBattleLoop(){
+    if (battleTimer) { clearInterval(battleTimer); battleTimer = null; }
   }
 
-  // NEW: dmg = attack - (def*(1-pen%))
-  // crit applies to player only; crit multiplier 1.5
-  function effDef(rawDef){
-    const p = Math.max(0, Math.min(90, S.penPct)) / 100;
-    return Math.floor(rawDef * (1 - p));
+  function playerPhysicalToEnemy(){
+    const base = dmgPhysical(S.atk, battle.enemyDef);
+    const roll = Math.random() * 100;
+    const isCrit = roll < S.critChance;
+    const mult = isCrit ? (1 + (critBonusPct()/100)) : 1;
+    const dmg = Math.max(1, Math.floor(base * mult));
+    return { dmg, isCrit };
   }
-  function playerDamage(att, def){
-    let d = Math.max(1, att - effDef(def));
-    const isCrit = (Math.random()*100) < S.critChance;
-    if (isCrit) d = Math.floor(d * 1.5);
-    return { d, isCrit };
+  function playerMagicToEnemy(){
+    const dmg = dmgMagic(battle.meHP, S.matk, battle.enemyMDef);
+    return { dmg };
   }
-  function enemyDamage(att, def){
-    // enemy no crit/pen
-    return Math.max(1, att - def);
-  }
-
-  function pushLog(line, highlight=false){
-    battle.log.push({ line, highlight });
-    if (battle.log.length > LOG_LIMIT) battle.log.shift();
+  function enemyCounterToPlayer(){
+    if (battle.enemyType === "PHY") {
+      const dmg = dmgPhysical(battle.enemyAtk, S.def);
+      return { dmg, type: "PHY" };
+    } else {
+      const dmg = dmgMagic(battle.enemyHP, battle.enemyMAtk, S.mdef);
+      return { dmg, type: "MAG" };
+    }
   }
 
   async function doTurn(mode){
     if (!battle) return;
     if (battle._busy) return;
+    if (!battle.chosenMode) return;
     battle._busy = true;
 
     try {
       battle.turn += 1;
 
-      // Player attacks
       if (mode === "phy") {
-        const { d, isCrit } = playerDamage(S.atk, battle.enemyDef);
-        battle.enemyHP = Math.max(0, battle.enemyHP - d);
-        pushLog(`${isCrit ? "CRIT " : ""}YOU(PHY): -${fmtSci(d)}`, isCrit);
+        const { dmg, isCrit } = playerPhysicalToEnemy();
+        battle.enemyHP = Math.max(0, battle.enemyHP - dmg);
+        pushLog(`${isCrit ? "CRIT! " : ""}YOU(PHY): -${dmg}`, isCrit);
       } else {
-        const { d, isCrit } = playerDamage(S.matk, battle.enemyMDef);
-        battle.enemyHP = Math.max(0, battle.enemyHP - d);
-        pushLog(`${isCrit ? "CRIT " : ""}YOU(MAG): -${fmtSci(d)}`, isCrit);
+        const { dmg } = playerMagicToEnemy();
+        battle.enemyHP = Math.max(0, battle.enemyHP - dmg);
+        pushLog(`YOU(MAG): -${dmg}`, true);
       }
 
       if (battle.enemyHP <= 0) {
-        const oneTurnKill = (battle.turn === 1);
-        await endBattle(true, oneTurnKill, false);
+        await endBattle(true, false, false);
         return;
       }
 
-      // Enemy counter: based on its type
-      if (battle.enemyType === "PHY") {
-        const d = enemyDamage(battle.enemyAtk, S.def);
-        battle.meHP = Math.max(0, battle.meHP - d);
-        pushLog(`ENEMY(PHY): -${fmtSci(d)}`, false);
-      } else {
-        const d = enemyDamage(battle.enemyMAtk, S.mdef);
-        battle.meHP = Math.max(0, battle.meHP - d);
-        pushLog(`ENEMY(MAG): -${fmtSci(d)}`, false);
-      }
+      const { dmg: edmg, type } = enemyCounterToPlayer();
+      battle.meHP = Math.max(0, battle.meHP - edmg);
+      pushLog(type === "PHY" ? `ENEMY(PHY): -${edmg}` : `ENEMY(MAG): -${edmg}`, false);
 
       if (battle.meHP <= 0) {
         await endBattle(false, false, false);
@@ -592,49 +663,9 @@
   }
 
   function ratioNowForOverkill(){
-    // 비교는 간단히 합산 스탯으로 (10% 레벨 성장과 맞추기 쉬움)
-    const me = (S.atk + S.def + S.matk + S.mdef);
-    const en = (battle.enemyAtk + battle.enemyDef + battle.enemyMAtk + battle.enemyMDef);
-    return me / Math.max(1, en);
-  }
-
-  async function endBattle(win, oneTurnKill, timeout){
-    stopBattleLoop();
-    showBattle(false);
-
-    if (win) S.maxLevelThisLife = Math.max(S.maxLevelThisLife, S.enemyLevel);
-
-    $("#resultTitle").textContent = win ? "승리" : "패배";
-    $("#resultSub").textContent = timeout
-      ? `턴 초과 · 적 HP ${Math.round((battle.enemyHP / battle.enemyMaxHP)*100)}%`
-      : `적 HP ${Math.round((battle.enemyHP / battle.enemyMaxHP)*100)}% · 턴 ${battle.turn}/${TURN_LIMIT}`;
-    $("#overkill").style.display = "none";
-    $("#skipLine").textContent = "";
-
-    if (win) {
-      if (oneTurnKill) {
-        const ratio = ratioNowForOverkill();
-        const k = ratio > 1 ? Math.ceil(Math.log(ratio) / Math.log(1.1)) : 0;
-        if (k > 0) {
-          $("#overkill").style.display = "block";
-          await animateSkip(k);
-          S.enemyLevel += k;
-          regenEnemyForLevel();
-        } else {
-          S.enemyLevel += 1;
-          regenEnemyForLevel();
-        }
-      } else {
-        S.enemyLevel += 1;
-        regenEnemyForLevel();
-      }
-      S.maxLevelThisLife = Math.max(S.maxLevelThisLife, S.enemyLevel);
-      save();
-      render();
-    }
-
-    showResult(true);
-    battle = null;
+    const Pme = playerPowerMetric();
+    const Penemy = enemyPowerMetricFromStats(battle.enemyAtk, battle.enemyDef, battle.enemyMAtk, battle.enemyMDef);
+    return Pme / Math.max(1, Penemy);
   }
 
   async function animateSkip(k){
@@ -653,39 +684,90 @@
   }
   function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
-  /* ---------- Rebirth ---------- */
+  async function endBattle(win, _unused, timeout){
+    stopBattleLoop();
+    showBattle(false);
+
+    let title = win ? "승리" : "패배";
+
+    const enemyHpPct = battle.enemyMaxHP > 0 ? (battle.enemyHP / battle.enemyMaxHP) : 0;
+    const myHpPct = battle.meMaxHP > 0 ? (battle.meHP / battle.meMaxHP) : 0;
+
+    let sub = timeout
+      ? `턴 초과 · 적 HP ${Math.round(enemyHpPct*100)}%`
+      : `적 HP ${Math.round(enemyHpPct*100)}% · 내 HP ${Math.round(myHpPct*100)}% · 턴 ${battle.turn}/${TURN_LIMIT}`;
+
+    $("#resultTitle").textContent = title;
+    $("#resultSub").textContent = sub;
+    $("#overkill").style.display = "none";
+    $("#skipLine").textContent = "";
+
+    if (win) {
+      S.maxLevelThisLife = Math.max(S.maxLevelThisLife, S.enemyLevel);
+
+      if (myHpPct >= OVERKILL_HP_PCT) {
+        // ✅ OVERKILL: 남은 HP 90% 이상이면 발동
+        const ratio = ratioNowForOverkill();
+        let k = ratio > 1 ? Math.ceil(Math.log(ratio) / Math.log(1.1)) : 1;
+        k = Math.max(1, k);
+
+        $("#overkill").style.display = "block";
+        await animateSkip(k);
+
+        S.enemyLevel += k;
+        regenEnemyForLevel();
+      } else if (myHpPct >= SKIP2_HP_PCT) {
+        // ✅ 남은 HP 50% 이상이면 2레벨 스킵
+        S.enemyLevel += 2;
+        regenEnemyForLevel();
+      } else {
+        S.enemyLevel += 1;
+        regenEnemyForLevel();
+      }
+
+      S.maxLevelThisLife = Math.max(S.maxLevelThisLife, S.enemyLevel);
+      save();
+      render();
+    }
+
+    showResult(true);
+    battle = null;
+  }
+
+  // ---------- Rebirth ----------
   function rebirthReady(){ return S.focusSecondsSinceRebirth >= 3000; }
   function doRebirth(){
-    if (!rebirthReady()) { toast("환생 조건 미달 (누적 집중 50분 필요)"); return; }
+    if (!rebirthReady()) { toast("환생 조건 미달 (집중 누적 50분 필요)"); return; }
 
-    // C0 10% 증가 (요청 반영)
-    S.c0 = S.c0 * 1.10;
+    const delta = S.maxLevelThisLife / 100;
+    S.c0 += delta;
 
-    // reset run vars
     S.rebirthCount += 1;
     S.focusSecondsSinceRebirth = 0;
     S.maxLevelThisLife = 1;
 
-    // level reset
-    S.enemyLevel = 1;
-
-    // points reset (요청: 포인트 승계 의미 없음)
     S.points = 0;
+    S.atk = 5; S.def = 5; S.matk = 5; S.mdef = 5;
+    S.critChance = 0; S.critDmgUp = 0;
 
-    // IMPORTANT: stats are preserved (atk/def/matk/mdef), crit/pen preserved
-    // integrated stat costs reset only
-    S.bonusSpentThisLife = 0;
-
+    S.enemyLevel = 1;
     regenEnemyForLevel();
+
     save();
     render();
-    toast(`환생! C0 → ${fmt2(S.c0)}`);
+    toast(`환생! ΔC0 +${fmt2(delta)} (C0 ${fmt2(S.c0)})`);
   }
 
-  /* ---------- UI Wiring ---------- */
+  // ---------- UI Wiring ----------
+  $("#btnSettings").addEventListener("click", () => showSettings(true));
+  $("#btnSettingsClose").addEventListener("click", () => showSettings(false));
+
   $("#btnGrow").addEventListener("click", () => {
     if (S.isGrowing) settleGrowth();
     else startGrowth();
+  });
+  $("#btnSettleOnly").addEventListener("click", () => {
+    if (S.isGrowing) settleGrowth();
   });
 
   $("#btnUpgrade").addEventListener("click", () => {
@@ -711,68 +793,22 @@
   });
 
   $("#btnRebirth").addEventListener("click", () => {
-    if (S.isGrowing) { toast("집중 중에는 환생 불가 (정산 후 가능)"); return; }
-    if (!rebirthReady()) {
-      toast(`환생 가능까지 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분`);
-      return;
-    }
+    if (S.isGrowing) { toast("집중중에는 환생할 수 없습니다. 먼저 정산하세요."); return; }
+    if (!rebirthReady()) { toast(`환생 가능까지 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분`); return; }
+    const delta = S.maxLevelThisLife / 100;
     const ok = confirm(
-      `환생하시겠습니까?\n\n이번 생 최고 레벨: ${S.maxLevelThisLife}\nC0: ${S.c0.toFixed(2)} → ${(S.c0*1.1).toFixed(2)}\n\n(레벨 1 / 포인트 0 / 통합 요구량만 초기화)`
+      `환생하시겠습니까?\n\n이번 생 최고 레벨: ${S.maxLevelThisLife}\nΔC0 = ${delta.toFixed(2)}\nC0: ${S.c0.toFixed(2)} → ${(S.c0+delta).toFixed(2)}\n\n(레벨/스탯/포인트 리셋)`
     );
     if (ok) doRebirth();
   });
 
-  // save buttons
-  $("#btnExport").addEventListener("click", async () => {
-    if (S.isGrowing) { toast("집중 중에는 내보내기 불가 (정산 후 가능)"); return; }
-    if ($("#battleOverlay").style.display === "block") { toast("전투 중에는 내보내기 불가"); return; }
-    const code = encodeSave(S);
-    const ok = await copyToClipboard(code);
-    toast(ok ? "복사 완료" : "복사 실패");
-  });
-
-  function safeImportFromString(str){
-    if (S.isGrowing) { toast("집중 중에는 가져올 수 없습니다. 먼저 정산하세요."); return; }
-    if ($("#battleOverlay").style.display === "block") { toast("전투 중에는 가져올 수 없습니다."); return; }
-    let imported;
-    try { imported = decodeSave(str); }
-    catch(e){ toast("가져오기 실패: " + (e.message || "형식 오류")); return; }
-
-    S = Object.assign(structuredClone(DEFAULT), imported);
-
-    // safety
-    S.isGrowing = false;
-    S.growStartAt = 0;
-
-    if (!S.enemyType || S.enemyMAtk == null || S.enemyMDef == null) regenEnemyForLevel();
-
-    save();
-    render();
-    toast("가져오기 완료");
-  }
-
-  $("#btnImport").addEventListener("click", () => {
-    const str = prompt("가져오기 코드 붙여넣기");
-    if (!str) return;
-    safeImportFromString(str);
-  });
-  $("#btnImportClip").addEventListener("click", async () => {
-    try {
-      const str = await readFromClipboard();
-      if (!str) { toast("클립보드가 비어있음"); return; }
-      safeImportFromString(str);
-    } catch(e) {
-      toast("클립보드 읽기 실패(권한/사파리). 붙여넣기 사용");
-    }
-  });
-
-  // battle mode choose
   $("#btnStartPhy").addEventListener("click", () => {
     if (!battle) return;
     battle.chosenMode = "phy";
     $("#modeChooser").style.display = "none";
     $("#modeFixed").style.display = "block";
-    pushLog("START: PHY 고정", true);
+    $("#btnStep").disabled = false;
+    pushLog(`START: PHY 고정`, true);
     renderBattle();
     startBattleLoop();
   });
@@ -781,12 +817,44 @@
     battle.chosenMode = "mag";
     $("#modeChooser").style.display = "none";
     $("#modeFixed").style.display = "block";
-    pushLog("START: MAG 고정", true);
+    $("#btnStep").disabled = false;
+    pushLog(`START: MAG 고정`, true);
     renderBattle();
     startBattleLoop();
   });
+  $("#btnStep").addEventListener("click", () => {
+    if (!battle || !battle.chosenMode) return;
+    doTurn(battle.chosenMode);
+  });
 
-  /* ---------- Upgrade UI ---------- */
+  // ---------- Settings ----------
+  function setDisplayMode(mode){
+    S.ui = S.ui || { display:"ON", refreshSec:1 };
+    S.ui.display = mode;
+    save();
+    render();
+    if ($("#settingsOverlay").style.display === "block") renderSettings();
+  }
+  function setRefreshSec(sec){
+    S.ui = S.ui || { display:"ON", refreshSec:1 };
+    S.ui.refreshSec = sec;
+    save();
+    scheduleGrowthUiTimer();
+    if ($("#settingsOverlay").style.display === "block") renderSettings();
+  }
+  $("#optDisplayOn").addEventListener("click", () => setDisplayMode("ON"));
+  $("#optDisplayOff").addEventListener("click", () => setDisplayMode("OFF"));
+  $("#optT1").addEventListener("click", () => setRefreshSec(1));
+  $("#optT60").addEventListener("click", () => setRefreshSec(60));
+  $("#optT300").addEventListener("click", () => setRefreshSec(300));
+
+  function renderSettings(){
+    const ui = S.ui || { display:"ON", refreshSec:1 };
+    $("#vDisplayMode").textContent = ui.display;
+    $("#vRefresh").textContent = (ui.refreshSec === 1) ? "1초" : (ui.refreshSec === 60 ? "1분" : "5분");
+  }
+
+  // ---------- Upgrade UI ----------
   function makeBtn(text, onClick, enabled=true){
     const b = document.createElement("button");
     b.className = "mini";
@@ -797,94 +865,205 @@
   }
 
   function renderUpgrade(){
-    $("#uPoints").textContent = fmtSci(S.points);
-    $("#uCostHint").textContent =
-      `통합 스탯 요구량(이번 생): bonusSpent=${S.bonusSpentThisLife} · 다음 +1 비용=${fmtSci(bonusCost(1))}`;
+    $("#uPoints").textContent = fmt(S.points);
 
-    $("#vATK").textContent = fmtSci(S.atk);
-    $("#vDEF").textContent = fmtSci(S.def);
-    $("#vMATK").textContent = fmtSci(S.matk);
-    $("#vMDEF").textContent = fmtSci(S.mdef);
+    $("#vATK").textContent = S.atk;
+    $("#vDEF").textContent = S.def;
+    $("#vMATK").textContent = S.matk;
+    $("#vMDEF").textContent = S.mdef;
 
     $("#vCrit").textContent = `${S.critChance}%`;
-    $("#vPen").textContent = `${S.penPct}%`;
+    $("#vCritDmg").textContent = `+${critBonusPct()}%`;
 
     const canReb = rebirthReady();
     $("#vRebirth").textContent = canReb
-      ? `가능 (최고Lv ${S.maxLevelThisLife})`
+      ? `가능 (최고Lv ${S.maxLevelThisLife}, ΔC0 ${(S.maxLevelThisLife/100).toFixed(2)})`
       : `불가 (남은 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분)`;
 
-    renderBonusButtons("atk", "#bATK");
-    renderBonusButtons("def", "#bDEF");
-    renderBonusButtons("matk", "#bMATK");
-    renderBonusButtons("mdef", "#bMDEF");
-
-    renderExpButtons("crit", "#bCrit");
-    renderExpButtons("pen", "#bPen");
+    renderStatButtons("atk", "#bATK");
+    renderStatButtons("def", "#bDEF");
+    renderStatButtons("matk", "#bMATK");
+    renderStatButtons("mdef", "#bMDEF");
+    renderCritButtons();
+    renderCritDmgButtons();
   }
 
-  function renderBonusButtons(key, containerSel){
+  function renderStatButtons(key, containerSel){
     const el = $(containerSel);
+    if (!el) return;
     el.innerHTML = "";
 
-    const cost1 = bonusCost(1);
-    const cost10 = bonusCost(10);
-    const cost100 = bonusCost(100);
+    const v = S[key];
+    const factor = 10;
+    const s = S[key];
+
+    const cost1 = seriesCostLinear(s, 1, factor);
+    const cost10 = seriesCostLinear(s, 10, factor);
+    const cost100 = seriesCostLinear(s, 100, factor);
 
     const can1 = cost1 <= S.points + 1e-9;
     const can10 = cost10 <= S.points + 1e-9;
-    const can100 = cost100 <= S.points + 1e-9;
 
-    el.appendChild(makeBtn("+1", () => { if(!applyBonus(key, 1)) toast("포인트 부족"); renderUpgrade(); }, can1));
-    el.appendChild(makeBtn("+10", () => { if(!applyBonus(key, 10)) toast("포인트 부족"); renderUpgrade(); }, can10));
-    el.appendChild(makeBtn("+100", () => { if(!applyBonus(key, 100)) toast("포인트 부족"); renderUpgrade(); }, can100));
+    const bigEnabled = v >= 100;
+    const can100 = bigEnabled && (cost100 <= S.points + 1e-9);
+
+    const nMax = maxAffordableN(s, factor, S.points);
+    const canMax = bigEnabled && nMax > 0;
+
+    const add = (n) => {
+      const ok = applyUpgrade(key, n);
+      if (!ok) toast("포인트 부족");
+      renderUpgrade();
+    };
+
+    el.appendChild(makeBtn("+1", () => add(1), can1));
+    el.appendChild(makeBtn("+10", () => add(10), can10));
+    el.appendChild(makeBtn("+100", () => add(100), can100));
+    el.appendChild(makeBtn("MAX", () => {
+      if (nMax <= 0) { toast("포인트 부족"); return; }
+      applyUpgrade(key, nMax);
+      renderUpgrade();
+    }, canMax));
   }
 
-  function renderExpButtons(kind, containerSel){
-    const el = $(containerSel);
+  function renderCritButtons(){
+    const el = $("#bCrit");
+    if (!el) return;
+    el.innerHTML = "";
+    const canInc = S.critChance < 90;
+
+    const can1 = canInc && (critChanceCost(S.critChance) <= S.points + 1e-9);
+
+    let cost5 = 0, can5 = false;
+    if (canInc) {
+      const realDelta = Math.min(5, 90 - S.critChance);
+      for (let i=0;i<realDelta;i++) cost5 += critChanceCost(S.critChance + i);
+      can5 = cost5 <= S.points + 1e-9;
+    }
+
+    el.appendChild(makeBtn("+1", () => {
+      const ok = applyCritChance(1);
+      if (!ok) toast("포인트 부족");
+      renderUpgrade();
+    }, can1));
+
+    el.appendChild(makeBtn("+5", () => {
+      const ok = applyCritChance(5);
+      if (!ok) toast("포인트 부족");
+      renderUpgrade();
+    }, can5));
+  }
+
+  function renderCritDmgButtons(){
+    const el = $("#bCritDmg");
+    if (!el) return;
     el.innerHTML = "";
 
-    if (kind === "crit") {
-      const can1 = expCost(S.critChance, 1) <= S.points + 1e-9 && S.critChance < 90;
-      const can5 = expCost(S.critChance, Math.min(5, 90 - S.critChance)) <= S.points + 1e-9 && S.critChance < 90;
+    const can1 = critDmgCost(S.critDmgUp) <= S.points + 1e-9;
 
-      el.appendChild(makeBtn("+1", () => { if(!applyCrit(1)) toast("포인트 부족"); renderUpgrade(); }, can1));
-      el.appendChild(makeBtn("+5", () => { if(!applyCrit(5)) toast("포인트 부족"); renderUpgrade(); }, can5));
-      return;
-    }
+    let cost5 = 0;
+    for (let i=0;i<5;i++) cost5 += critDmgCost(S.critDmgUp + i);
+    const can5 = cost5 <= S.points + 1e-9;
 
-    if (kind === "pen") {
-      const can1 = expCost(S.penPct, 1) <= S.points + 1e-9 && S.penPct < 90;
-      const can5 = expCost(S.penPct, Math.min(5, 90 - S.penPct)) <= S.points + 1e-9 && S.penPct < 90;
+    el.appendChild(makeBtn("+1", () => {
+      const ok = applyCritDmgUp(1);
+      if (!ok) toast("포인트 부족");
+      renderUpgrade();
+    }, can1));
 
-      el.appendChild(makeBtn("+1", () => { if(!applyPen(1)) toast("포인트 부족"); renderUpgrade(); }, can1));
-      el.appendChild(makeBtn("+5", () => { if(!applyPen(5)) toast("포인트 부족"); renderUpgrade(); }, can5));
+    el.appendChild(makeBtn("+5", () => {
+      const ok = applyCritDmgUp(5);
+      if (!ok) toast("포인트 부족");
+      renderUpgrade();
+    }, can5));
+  }
+
+  // ---------- OFF Focus + Stealth Preview ----------
+  let stealthUntil = 0;
+  const STEALTH_MS = 1500;
+
+  function triggerStealthPeek(){
+    if (!S.isGrowing) return;
+    const ui = S.ui || { display:"ON", refreshSec:1 };
+    if (ui.display !== "OFF") return;
+
+    stealthUntil = now() + STEALTH_MS;
+    render(); // 즉시 한 번 보여주기
+    clearTimeout(triggerStealthPeek._t);
+    triggerStealthPeek._t = setTimeout(() => render(), STEALTH_MS + 10);
+  }
+
+  // 화면 탭/클릭 시 스텔스 미리보기
+  $("#appRoot").addEventListener("click", (e) => {
+    // 설정/버튼 클릭은 제외하고 싶으면 여기서 필터 가능
+    if (e.target && (e.target.closest("#btnSettings") || e.target.closest("button") || e.target.closest("#settingsOverlay"))) return;
+    triggerStealthPeek();
+  });
+
+  function applyOffFocusUi(on){
+    const app = $("#appRoot");
+    const bottomNormal = $("#btnRowNormal");
+    const bottomSettle = $("#btnRowSettleOnly");
+    const elapsedBox = $("#elapsedOnlyBox");
+
+    if (on) {
+      app.classList.add("offFocus");
+      bottomNormal.style.display = "none";
+      bottomSettle.style.display = "flex";
+      elapsedBox.style.display = "block";
+    } else {
+      app.classList.remove("offFocus");
+      bottomNormal.style.display = "flex";
+      bottomSettle.style.display = "none";
+      elapsedBox.style.display = "none";
+      $("#stealthPeek").style.display = "none";
+      $("#stealthPeek").textContent = "";
     }
   }
 
-  /* ---------- Render ---------- */
+  // ---------- Render ----------
   function render(){
+    const ui = S.ui || { display:"ON", refreshSec:1 };
     const live = $("#liveGain");
+
     $("#topLeft").textContent = `Enemy Lv ${S.enemyLevel} · ${S.enemyType}`;
     $("#topRight").textContent = `C0 ${fmt2(S.c0)} | C ${fmt2(currentC())}`;
 
     if (S.isGrowing) {
-      const tSec = Math.max(0, Math.floor((now() - S.growStartAt)/1000));
-      const eff = efficiencyPct(tSec);
-      const E = eff / 100;
-      const C = currentC();
-      const gain = Math.floor(tSec * C * E);
+      const { tSec, eff, gain } = calcGrowthPreview();
 
-      $("#points").textContent = fmtSci(S.points + gain);
-      live.style.display = "block";
-      live.textContent = `경과 ${fmtTime(tSec)} · +${fmtSci(gain)} (효율 ${eff}%)`;
+      if (ui.display === "OFF") {
+        applyOffFocusUi(true);
 
-      $("#status").textContent = "집중";
-      $("#btnGrow").textContent = "정산하기";
-      $("#btnUpgrade").disabled = true;
-      $("#btnBattle").disabled = true;
+        $("#elapsedOnly").textContent = fmtTime(tSec);
+        $("#elapsedSub").textContent = "집중 중 (탭하면 잠깐 표시)";
+
+        const peekEl = $("#stealthPeek");
+        const showPeek = now() < stealthUntil;
+        if (showPeek) {
+          const total = S.points + gain;
+          peekEl.style.display = "block";
+          peekEl.textContent = `현재 포인트: ${fmt(total)}\n예상 증가: +${fmt(gain)} (효율 ${eff}%)`;
+        } else {
+          peekEl.style.display = "none";
+          peekEl.textContent = "";
+        }
+      } else {
+        applyOffFocusUi(false);
+
+        $("#points").textContent = fmt(S.points + gain);
+        live.style.display = "block";
+        live.textContent = `경과 ${fmtTime(tSec)} · +${fmt(gain)} (효율 ${eff}%)`;
+
+        $("#status").textContent = "집중";
+        $("#btnGrow").textContent = "정산하기";
+        $("#btnUpgrade").disabled = true;
+        $("#btnBattle").disabled = true;
+      }
     } else {
-      $("#points").textContent = fmtSci(S.points);
+      applyOffFocusUi(false);
+
+      $("#points").textContent = fmt(S.points);
       live.style.display = "none";
       live.textContent = "";
 
@@ -896,7 +1075,7 @@
 
     const mins = Math.floor(S.focusSecondsSinceRebirth / 60);
     $("#rebirthInfo").textContent =
-      `환생: 누적 ${mins}분 / 50분 · 이번 생 최고 Lv ${S.maxLevelThisLife} · CRIT ${S.critChance}% · PEN ${S.penPct}%`;
+      `환생: 누적 ${mins}분 / 50분 · 이번 생 최고 Lv ${S.maxLevelThisLife} · ΔC0 ${(S.maxLevelThisLife/100).toFixed(2)}`;
 
     if ($("#upgradeOverlay").style.display === "block") renderUpgrade();
   }
@@ -907,77 +1086,71 @@
     $("#turnLimit").textContent = TURN_LIMIT;
     $("#battleTop").textContent = `Enemy Lv ${S.enemyLevel} · ${battle.enemyType}`;
 
-    const meHPpct = Math.max(0, Math.min(100, Math.floor((battle.meHP / battle.meMaxHP) * 100)));
-    const enHPpct = Math.max(0, Math.min(100, Math.floor((battle.enemyHP / battle.enemyMaxHP) * 100)));
-    $("#meHPpct").textContent = meHPpct;
-    $("#enemyHPpct").textContent = enHPpct;
+    $("#enemyLine").textContent =
+      `E(${battle.enemyType}): ATK ${battle.enemyAtk} DEF ${battle.enemyDef} MATK ${battle.enemyMAtk} MDEF ${battle.enemyMDef} HP ${battle.enemyMaxHP}`;
+
+    $("#enemyHP").textContent = `${battle.enemyHP}/${battle.enemyMaxHP}`;
+    $("#meHP").textContent = `${battle.meHP}/${battle.meMaxHP}`;
     $("#turn").textContent = battle.turn;
 
-    $("#statLineMe").textContent =
-      `ME: ATK ${fmtSci(S.atk)} DEF ${fmtSci(S.def)} MATK ${fmtSci(S.matk)} MDEF ${fmtSci(S.mdef)} · CRIT ${S.critChance}% PEN ${S.penPct}%`;
-
-    $("#statLineEnemy").textContent =
-      `ENEMY: ATK ${fmtSci(battle.enemyAtk)} DEF ${fmtSci(battle.enemyDef)} MATK ${fmtSci(battle.enemyMAtk)} MDEF ${fmtSci(battle.enemyMDef)}`;
-
     if (battle.chosenMode) {
-      const recommend = (battle.enemyType === "MAG") ? "물리(DEF 낮을 확률↑)" : "마법(MDEF 낮을 확률↑)";
+      const recommend = (battle.enemyType === "MAG") ? "물리" : "마법";
       $("#modeFixed").textContent =
         `이번 전투: ${battle.chosenMode === "phy" ? "물리" : "마법"} 고정 · 추천: ${recommend}`;
-      $("#modeFixed").style.display = "block";
     }
 
     const logEl = $("#log");
     if (battle.log.length === 0) logEl.textContent = "";
     else {
       logEl.innerHTML = battle.log.map(x => {
-        const cls = x.highlight ? "hl" : "";
+        const cls = x.highlight ? "crit" : "";
         return `<div class="${cls}">${escapeHtml(x.line)}</div>`;
       }).join("");
       logEl.scrollTop = logEl.scrollHeight;
     }
   }
 
-  function escapeHtml(s){
-    return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+  // ---------- Growth UI Timer ----------
+  let growthUiTimer = null;
+  function scheduleGrowthUiTimer(){
+    const ui = S.ui || { display:"ON", refreshSec:1 };
+    if (growthUiTimer) { clearInterval(growthUiTimer); growthUiTimer = null; }
+    const ms = Math.max(1000, ui.refreshSec * 1000);
+
+    growthUiTimer = setInterval(() => {
+      if (!S.isGrowing) return;
+      render();
+    }, ms);
   }
 
-  /* ---------- Persistence ---------- */
+  // ---------- Persistence ----------
   function save(){
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
   }
-  function loadMerged(){
+  function load(){
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return structuredClone(DEFAULT);
-
-      const parsed = JSON.parse(raw);
-      const merged = Object.assign(structuredClone(DEFAULT), parsed);
-
-      // migrate: older fields safety
-      if (merged.pen == null && merged.penPct == null) merged.penPct = 0;
-      if (merged.penPct == null) merged.penPct = 0;
-      if (merged.critChance == null && merged.crit == null) merged.critChance = 0;
-      if (merged.critChance == null) merged.critChance = 0;
-      if (merged.bonusSpentThisLife == null) merged.bonusSpentThisLife = 0;
-
-      // normalize types
-      merged.critChance = Math.max(0, Math.min(90, Math.floor(merged.critChance)));
-      merged.penPct = Math.max(0, Math.min(90, Math.floor(merged.penPct)));
-
-      return merged;
+      if (!raw) {
+        const s = structuredClone(DEFAULT);
+        s.enemyLevel = 1;
+        s.enemyAtk = 0; s.enemyDef = 0;
+        s.enemyMAtk = 0; s.enemyMDef = 0;
+        return s;
+      }
+      const loaded = Object.assign(structuredClone(DEFAULT), JSON.parse(raw));
+      loaded.ui = Object.assign({ display:"ON", refreshSec:1 }, loaded.ui || {});
+      return loaded;
     } catch(e) {
       return structuredClone(DEFAULT);
     }
   }
 
-  /* ---------- Boot ---------- */
+  // ---------- Boot ----------
   regenEnemyForLevel();
   render();
+  scheduleGrowthUiTimer();
 
-  // 성장중 화면 실시간 갱신
-  setInterval(() => { if (S.isGrowing) render(); }, 500);
-
-  // keep screen awake (if supported)
+  // Optional: keep screen awake (if supported)
   let wakeLock = null;
   async function tryWakeLock(){
     try {
@@ -986,7 +1159,9 @@
       }
     } catch(e) {}
   }
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) tryWakeLock(); });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) tryWakeLock();
+  });
   tryWakeLock();
 })();
 </script>
