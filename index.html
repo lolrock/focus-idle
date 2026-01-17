@@ -552,7 +552,7 @@
   function sqrDmg(att, def){
     const diff = att - def;
     if (diff <= 0) return 1;          // 바닥딜
-    const v = diff * diff;
+    const v = diff;
     return (v >= 1 ? v : 1);
   }
 
