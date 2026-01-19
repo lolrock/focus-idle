@@ -230,7 +230,7 @@
       </div>
 
       <div class="row">
-        <div class="hint">ATK/DEF/MATK/MDEF 비용은 <b>통합</b>입니다. (10pt 시작, 구매 1회마다 1.5배) · 환생 시 구매횟수만 초기화</div>
+        <div class="hint">ATK/DEF/MATK/MDEF 비용: <b>10 × 현재 스탯</b> (각 스탯 개별 계산) · 환생 시 4스탯은 5로 초기화</div>
       </div>
 
       <div class="row" id="rowCrit">
@@ -242,7 +242,7 @@
       <div class="row" id="rowCritDmg">
         <div class="rowHead"><div class="name">CRIT+</div><div class="val" id="vCritDmg">+50%</div></div>
         <div class="rowBtns" id="bCritDmg"></div>
-        <div class="hint">추가 피해량 +50% 시작, +5% 단위, 상한 없음, 비용 10×2^업횟수</div>
+        <div class="hint">추가 피해량 +50% 시작, +5% 단위, 상한 없음, 비용 10×2^업횟수 (환생 시 유지)</div>
       </div>
 
       <div class="row">
@@ -250,7 +250,7 @@
         <div class="rowBtns">
           <button id="btnRebirth" class="mini">환생</button>
         </div>
-        <div class="hint">조건: 환생 이후 집중 누적 50분(3000초) 이상</div>
+        <div class="hint">조건: 환생 이후 집중 누적 50분(3000초) 이상 · 효과: <b>C0 = 현재 C</b>, 레벨/포인트/4스탯 초기화, 치명/치피 유지</div>
       </div>
 
       <div class="row">
@@ -352,7 +352,9 @@
     points: 0,
 
     atk: 5, def: 5, matk: 5, mdef: 5,
-    statBuys: 0,        // ATK/DEF/MATK/MDEF 공용 구매횟수(비용 증가용, 환생 시 0)
+
+    // (구버전 호환용) 예전 statBuys가 저장돼 있어도 무시
+    statBuys: 0,
 
     critChance: 0,      // %
     critDmgUp: 0,       // bonus = 50 + 5*critDmgUp
@@ -469,43 +471,34 @@
   document.addEventListener("visibilitychange", () => { if (document.hidden) settleGrowth(); });
   window.addEventListener("pagehide", () => settleGrowth());
 
-  // ---------- Unified STAT costs (x1.5 each buy) ----------
-  const STAT_BASE_COST = 10;
-  const STAT_GROWTH = 1.5;
-
-  function statNextCost(buyIndex){
-    return STAT_BASE_COST * Math.pow(STAT_GROWTH, buyIndex);
-  }
-  function statCostForN(startBuyIndex, n){
+  // ---------- STAT costs (10 * current stat, per-stat independent) ----------
+  function statCostForNFromValue(statValue, n){
     if (n <= 0) return 0;
-    const a = STAT_BASE_COST * Math.pow(STAT_GROWTH, startBuyIndex);
-    return a * (Math.pow(STAT_GROWTH, n) - 1) / (STAT_GROWTH - 1);
+    // sum_{i=0..n-1} 10*(statValue + i) = 10*(n*statValue + n(n-1)/2)
+    return 10 * (n * statValue + (n * (n - 1)) / 2);
   }
-  function maxAffordableStatN(points){
-    // UX 상 MAX는 100까지만
+  function maxAffordableStatNFromValue(statValue, points){
     let n = 0;
-    let cost = 0;
     while (n < 100) {
-      const c = statNextCost(S.statBuys + n);
-      if (cost + c > points + 1e-9) break;
-      cost += c;
+      const c = statCostForNFromValue(statValue, n + 1);
+      if (c > points + 1e-9) break;
       n++;
     }
     return n;
   }
   function applyStatUpgrade(statKey, n){
     if (n <= 0) return false;
-    const cost = statCostForN(S.statBuys, n);
+    const v = S[statKey];
+    const cost = statCostForNFromValue(v, n);
     if (cost > S.points + 1e-9) return false;
 
     S.points -= cost;
     S[statKey] += n;
-    S.statBuys += n;
     save(); render();
     return true;
   }
 
-  // ---------- Crit costs ----------
+  // ---------- Crit costs (unchanged) ----------
   function critChanceCost(c){ return 10 * Math.pow(2, c); }
   function applyCritChance(delta){
     if (delta <= 0) return false;
@@ -552,7 +545,7 @@
   function sqrDmg(att, def){
     const diff = att - def;
     if (diff <= 0) return 1;          // 바닥딜
-    const v = diff;
+    const v = diff * diff;
     return (v >= 1 ? v : 1);
   }
 
@@ -771,28 +764,28 @@
   function doRebirth(){
     if (!rebirthReady()) { toast("환생 조건 미달 (집중 누적 50분 필요)"); return; }
 
-    const delta = S.maxLevelThisLife / 100;
-    S.c0 += delta;
+    // 1) C0 = 현재 C (환생 직전 기준)
+    const newC0 = currentC();
+    S.c0 = newC0;
 
     S.rebirthCount += 1;
     S.focusSecondsSinceRebirth = 0;
     S.maxLevelThisLife = 1;
 
-    // 포인트/레벨 리셋
+    // 레벨/포인트 리셋
     S.points = 0;
 
-    // 스탯은 유지, 비용 카운터만 초기화
-    S.statBuys = 0;
+    // 2) 4스탯 초기화
+    S.atk = 5; S.def = 5; S.matk = 5; S.mdef = 5;
 
-    // 치명/치피는 유지 (플레이어 특권)
-    // S.critChance / S.critDmgUp 유지
+    // 치명/치피는 유지 (초기화하지 않음)
 
     S.enemyLevel = 1;
     regenEnemyForLevel();
 
     save();
     render();
-    toast(`환생! ΔC0 +${fmt2(delta)} (C0 ${fmt2(S.c0)})`);
+    toast(`환생! C0 = ${fmt2(S.c0)}`);
   }
 
   // ---------- UI Wiring ----------
@@ -832,9 +825,10 @@
   $("#btnRebirth").addEventListener("click", () => {
     if (S.isGrowing) { toast("집중중에는 환생할 수 없습니다. 먼저 정산하세요."); return; }
     if (!rebirthReady()) { toast(`환생 가능까지 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분`); return; }
-    const delta = S.maxLevelThisLife / 100;
+
+    const newC0 = currentC();
     const ok = confirm(
-      `환생하시겠습니까?\n\n이번 생 최고 레벨: ${S.maxLevelThisLife}\nΔC0 = ${delta.toFixed(2)}\nC0: ${S.c0.toFixed(2)} → ${(S.c0+delta).toFixed(2)}\n\n(레벨/포인트 리셋, 스탯 유지, 스탯 비용카운터만 초기화)`
+      `환생하시겠습니까?\n\n이번 생 최고 레벨: ${S.maxLevelThisLife}\nC0: ${S.c0.toFixed(2)} → ${newC0.toFixed(2)} (현재 C)\n\n(레벨/포인트/4스탯 초기화, 치명/치피 유지)`
     );
     if (ok) doRebirth();
   });
@@ -914,7 +908,7 @@
 
     const canReb = rebirthReady();
     $("#vRebirth").textContent = canReb
-      ? `가능 (최고Lv ${S.maxLevelThisLife}, ΔC0 ${(S.maxLevelThisLife/100).toFixed(2)})`
+      ? `가능 (C0→현재 C ${fmt2(currentC())})`
       : `불가 (남은 ${Math.ceil((3000 - S.focusSecondsSinceRebirth)/60)}분)`;
 
     renderStatButtons("atk", "#bATK");
@@ -930,17 +924,17 @@
     el.innerHTML = "";
 
     const v = S[key];
-    const bigEnabled = v >= 100; // +100/MAX 활성화 조건(요구사항)
+    const bigEnabled = v >= 100; // 기존 요구사항 유지
 
-    const cost1 = statCostForN(S.statBuys, 1);
-    const cost10 = statCostForN(S.statBuys, 10);
-    const cost100 = statCostForN(S.statBuys, 100);
+    const cost1 = statCostForNFromValue(v, 1);
+    const cost10 = statCostForNFromValue(v, 10);
+    const cost100 = statCostForNFromValue(v, 100);
 
     const can1 = cost1 <= S.points + 1e-9;
     const can10 = cost10 <= S.points + 1e-9;
     const can100 = bigEnabled && (cost100 <= S.points + 1e-9);
 
-    const nMax = maxAffordableStatN(S.points);
+    const nMax = maxAffordableStatNFromValue(v, S.points);
     const canMax = bigEnabled && nMax > 0;
 
     const add = (n) => {
@@ -1106,7 +1100,7 @@
 
     const mins = Math.floor(S.focusSecondsSinceRebirth / 60);
     $("#rebirthInfo").textContent =
-      `환생: 누적 ${mins}분 / 50분 · 이번 생 최고 Lv ${S.maxLevelThisLife} · ΔC0 ${(S.maxLevelThisLife/100).toFixed(2)}`;
+      `환생: 누적 ${mins}분 / 50분 · 이번 생 최고 Lv ${S.maxLevelThisLife} · 환생 시 C0=현재 C`;
 
     if ($("#upgradeOverlay").style.display === "block") renderUpgrade();
   }
@@ -1177,9 +1171,9 @@
       }
       const loaded = Object.assign(structuredClone(DEFAULT), JSON.parse(raw));
       loaded.ui = Object.assign({ display:"ON", refreshSec:1 }, loaded.ui || {});
-      if (loaded.statBuys == null) loaded.statBuys = 0;
 
       // 구버전 호환: piercePct가 있어도 그냥 무시 (삭제됨)
+      // 구버전 호환: statBuys가 있어도 현재 버전에선 사용하지 않음
       return loaded;
     } catch(e) {
       return structuredClone(DEFAULT);
