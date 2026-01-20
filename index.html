@@ -545,8 +545,7 @@
   function sqrDmg(att, def){
     const diff = att - def;
     if (diff <= 0) return 1;          // 바닥딜
-    const v = diff * diff;
-    return (v >= 1 ? v : 1);
+    return (diff >= 1 ? diff : 1);
   }
 
   function pushLog(line, highlight=false){
